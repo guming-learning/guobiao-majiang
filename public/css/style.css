@@ -3,8 +3,8 @@
   --felt: #0b6b3a;
   --felt-dark: #074d29;
   --gold: #e8c87a;
-  --tile-face: #fbf7ec;
-  --tile-edge: #d8cfb4;
+  --tile-face: #f8f1dc;  /* 象牙白：贴近真实麻将牙白色 */
+  --tile-edge: #cbbf9e;
   --wan: #b3261e;
   --tiao: #1f7a3d;
   --bing: #14539a;
@@ -101,7 +101,7 @@ html, body {
 
 /* ===== 麻将牌 ===== */
 .tile {
-  position: relative; background: linear-gradient(160deg, #ffffff, var(--tile-face));
+  position: relative; background: linear-gradient(157deg, #fffdf3 0%, var(--tile-face) 72%, #f1e8cd 100%);
   border: 1px solid var(--tile-edge); border-radius: 6px;
   box-shadow: 0 2px 2px rgba(0,0,0,0.35), inset 0 -3px 0 #e6dcc2;
   display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
