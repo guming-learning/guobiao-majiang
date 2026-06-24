@@ -414,7 +414,10 @@ class Game {
       score: this.scores[p.seat],
       handCount: p.hand.length,
       hand: p.seat === seat ? p.hand.slice().sort((a, b) => a - b) : null,
-      melds: p.melds.map((m) => ({ type: m.type, tiles: m.tiles.slice(), from: m.from, claimed: m.claimed, concealed: m.type === 'angang' })),
+      melds: p.melds.map((m) => {
+        const hideAngang = m.type === 'angang' && p.seat !== seat; // 别家暗杠不泄露牌面
+        return { type: m.type, tiles: hideAngang ? m.tiles.map(() => 0) : m.tiles.slice(), from: m.from, claimed: m.claimed, concealed: m.type === 'angang' };
+      }),
       flowers: p.flowers.slice(),
       river: p.river.slice(),
     }));
@@ -440,7 +443,10 @@ class Game {
   // 观战视图：以 persp 座位为下方，但隐藏所有玩家的暗牌、无任何操作
   getSpectatorView(persp = 0) {
     const v = this.getView(persp);
-    v.players.forEach((p) => { p.hand = null; });
+    v.players.forEach((p) => {
+      p.hand = null;
+      p.melds.forEach((m) => { if (m.concealed) m.tiles = m.tiles.map(() => 0); }); // 观战也不泄露暗杠
+    });
     v.myDraw = null;
     v.actions = { type: 'none' };
     v.spectator = true;

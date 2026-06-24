@@ -204,7 +204,7 @@
   function meldEl(m) {
     const wrap = document.createElement('div'); wrap.className = 'meld';
     m.tiles.forEach((t, idx) => {
-      const back = m.concealed && (idx === 0 || idx === 3); // 暗杠两端盖牌
+      const back = !!m.concealed; // 暗杠全部盖牌，不显示牌面
       wrap.appendChild(MJ.tileEl(t, { back }));
     });
     return wrap;
