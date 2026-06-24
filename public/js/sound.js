@@ -8,8 +8,9 @@
   function pickVoice() {
     if (!tts) return;
     const vs = tts.getVoices() || [];
-    zhVoice = vs.find((v) => /zh[-_]?cn/i.test(v.lang)) || vs.find((v) => /^zh/i.test(v.lang)) ||
-              vs.find((v) => /chinese|普通话|中文/i.test(v.name)) || null;
+    const zh = vs.filter((v) => /^zh\b|zh[-_]/i.test(v.lang) || /chinese|中文|普通话|国语|汉语/i.test(v.name));
+    // 优先本地(离线)语音，避免网络语音（如 Google 普通话）造成的延迟
+    zhVoice = zh.find((v) => v.localService) || zh[0] || null;
   }
   if (tts) { pickVoice(); tts.onvoiceschanged = pickVoice; }
 
@@ -23,15 +24,15 @@
     }
   }
 
-  // 中文语音播报（吃/碰/杠/胡/补花、报牌名）
-  function say(text, interrupt) {
+  // 中文语音播报（吃/碰/杠/胡/补花、报牌名）—— 仅在正在朗读时打断，避免无谓 cancel 造成的启动延迟
+  function say(text) {
     if (!enabled || !text || !tts) return;
     try {
-      if (interrupt) tts.cancel();
+      if (tts.speaking || tts.pending) tts.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = 'zh-CN';
       if (zhVoice) u.voice = zhVoice;
-      u.rate = 1.05; u.pitch = 1; u.volume = 1;
+      u.rate = 1.25; u.pitch = 1; u.volume = 1;
       tts.speak(u);
     } catch (e) {}
   }

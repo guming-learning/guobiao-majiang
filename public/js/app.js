@@ -87,11 +87,11 @@
       prevMyTurn = myTurn;
       if (view.phase === 'ended' && prevPhase !== 'ended') {
         const r = view.result || {};
-        if (r.type === 'draw') { SFX.draws(); SFX.say('流局', true); }
+        if (r.type === 'draw') { SFX.draws(); SFX.say('流局'); }
         else {
           const mine = r.winners && r.winners.some((w) => w.seat === view.you);
           if (mine) SFX.win(); else SFX.lose();
-          SFX.say(r.type === 'zimo' ? '自摸' : (r.robKong ? '抢杠胡' : '胡'), true);
+          SFX.say(r.type === 'zimo' ? '自摸' : (r.robKong ? '抢杠胡' : '胡'));
         }
       }
       prevPhase = view.phase;
@@ -349,12 +349,12 @@
 
   // ===== 事件提示 =====
   socket.on('event', (e) => {
-    if (e.type === 'discard') { if (window.SFX) { SFX.discard(); SFX.say(MJ.tileSpeak(e.tile), true); } }
+    if (e.type === 'discard') { if (window.SFX) { SFX.discard(); SFX.say(MJ.tileSpeak(e.tile)); } }
     else if (e.type === 'draw') { if (window.SFX) SFX.draw(); }
-    else if (e.type === 'peng') { flash('碰！'); if (window.SFX) { SFX.claim(); SFX.say('碰', true); } }
-    else if (e.type === 'chi') { flash('吃！'); if (window.SFX) { SFX.claim(); SFX.say('吃', true); } }
-    else if (e.type === 'gang') { flash(e.kind === 'angang' ? '暗杠！' : e.kind === 'jiagang' ? '加杠！' : '杠！'); if (window.SFX) { SFX.claim(); SFX.say(e.kind === 'angang' ? '暗杠' : '杠', true); } }
-    else if (e.type === 'flower') { flash('补花'); if (window.SFX) { SFX.flower(); SFX.say('补花', true); } }
+    else if (e.type === 'peng') { flash('碰！'); if (window.SFX) { SFX.claim(); SFX.say('碰'); } }
+    else if (e.type === 'chi') { flash('吃！'); if (window.SFX) { SFX.claim(); SFX.say('吃'); } }
+    else if (e.type === 'gang') { flash(e.kind === 'angang' ? '暗杠！' : e.kind === 'jiagang' ? '加杠！' : '杠！'); if (window.SFX) { SFX.claim(); SFX.say(e.kind === 'angang' ? '暗杠' : '杠'); } }
+    else if (e.type === 'flower') { flash('补花'); if (window.SFX) { SFX.flower(); SFX.say('补花'); } }
   });
 
   let toastTimer = null;

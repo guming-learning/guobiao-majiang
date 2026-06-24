@@ -8,6 +8,7 @@
   --wan: #b3261e;
   --tiao: #1f7a3d;
   --bing: #14539a;
+  --dots: #d4a017;
   --zi: #2a2a2a;
   --hua: #b5179e;
 }
@@ -107,7 +108,7 @@ html, body {
 .tile .word { font-size: calc(var(--th, 56px) * 0.5); font-weight: 800; }
 .tile.wan  { color: var(--wan); }
 .tile.tiao { color: var(--tiao); }
-.tile.bing { color: var(--bing); }
+.tile.bing { color: var(--dots); }
 .tile.feng, .tile.bai { color: var(--bing); }
 .tile.zhong { color: var(--wan); }
 .tile.fa   { color: var(--tiao); }
