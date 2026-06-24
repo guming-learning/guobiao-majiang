@@ -23,6 +23,8 @@ class Room {
     this.scores = [0, 0, 0, 0];
     this.dealer = 0;
     this.quanfeng = T.TILE_E;
+    this.turnTime = 20000; // 出牌等待(毫秒)，可在建房时设置
+    this.minFan = 8;       // 起胡番数，可在建房时设置(8/16/32)
     this.game = null;
     this.handNo = 0;
     this.timer = null;
@@ -105,6 +107,8 @@ class Room {
       scores: this.scores.slice(),
       dealer: this.dealer,
       handNo: this.handNo,
+      turnTime: this.turnTime,
+      minFan: this.minFan,
       inGame: this.inGame(),
       phase: this.game ? this.game.phase : 'waiting',
     };
@@ -137,6 +141,7 @@ class Room {
       scores: this.scores,
       dealer: this.dealer,
       quanfeng: this.quanfeng,
+      minFan: this.minFan,
       onEvent: (e) => this.onGameEvent(e),
     });
     this.game.start();
@@ -259,7 +264,7 @@ class Room {
       this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; try { this.game.forceResolveClaims(); } catch (e) {} this.afterChange(); }, CLAIM_TIMEOUT);
     } else if (phase === 'acting') {
       this.timerKind = 'acting';
-      this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; this.autoDiscard(); this.afterChange(); }, ACT_TIMEOUT);
+      this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; this.autoDiscard(); this.afterChange(); }, this.turnTime);
     } else if (phase === 'ended') {
       this.timerKind = 'ended';
       this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; if (this.isFull()) this.nextHand(); }, NEXT_TIMEOUT);
@@ -312,12 +317,16 @@ class RoomManager {
   }
   broadcastLobby() { this.io.emit('lobby', this.lobbyState()); }
 
-  createRoom(socket) {
+  createRoom(socket, opts) {
     const playerId = this.socketToPlayer.get(socket.id);
     if (!playerId) return;
     this.leaveRoom(socket, true);
     const room = new Room(this);
     room.owner = playerId;
+    const tt = parseInt(opts && opts.turnTime, 10);
+    if ([10, 15, 20, 30, 60].includes(tt)) room.turnTime = tt * 1000;
+    const mf = parseInt(opts && opts.minFan, 10);
+    if ([8, 16, 32].includes(mf)) room.minFan = mf;
     this.rooms.set(room.id, room);
     this._join(socket, room);
   }

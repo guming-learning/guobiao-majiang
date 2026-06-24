@@ -70,15 +70,16 @@ function buildHandtiles({ melds, concealed, winTile, isZimo, quanfeng, menfeng, 
   return ht;
 }
 
-// 评估和牌：返回 { ok(>=8番), thresholdFan, score(含花), total, items, huapai }
+// 评估和牌：返回 { ok(>=起胡番数), thresholdFan, score(含花), total, items, huapai }
 function evaluateWin(opts) {
+  const minFan = opts.minFan || 8;
   const ht = buildHandtiles(opts);
   if (!ht) return { ok: false, thresholdFan: 0, score: 0, total: 0, items: [], huapai: 0 };
   const fan = new Fan();
   fan.CountFan(ht);
   const r = fan.getResult();
   return {
-    ok: r.thresholdFan >= 8,
+    ok: r.thresholdFan >= minFan,
     thresholdFan: r.thresholdFan,
     score: r.thresholdFan + r.huapaiCount, // 用于计分的番数（含花牌）
     total: r.total,

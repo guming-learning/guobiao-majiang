@@ -36,7 +36,14 @@
   socket.on('errorMsg', (m) => toast(m));
 
   // ===== 大厅 =====
-  $('create-room-btn').addEventListener('click', () => socket.emit('createRoom'));
+  $('create-room-btn').addEventListener('click', () => $('create-modal').classList.add('active'));
+  $('cfg-cancel').addEventListener('click', () => $('create-modal').classList.remove('active'));
+  $('cfg-ok').addEventListener('click', () => {
+    const turnTime = parseInt($('cfg-time').value, 10);
+    const minFan = parseInt($('cfg-fan').value, 10);
+    $('create-modal').classList.remove('active');
+    socket.emit('createRoom', { turnTime, minFan });
+  });
   $('refresh-btn').addEventListener('click', () => socket.emit('listRooms'));
   socket.on('lobby', renderLobby);
   function renderLobby(d) {
@@ -114,12 +121,18 @@
     $('tb-room').textContent = '房间 ' + rid;
     const isOwner = !!(lastRoom && lastRoom.owner && lastRoom.owner === myPlayerId);
     $('close-room-btn').style.display = isOwner ? '' : 'none';
+    const minFan = (lastGame && lastGame.minFan) || (lastRoom && lastRoom.minFan) || 8;
     if (lastGame) {
-      $('tb-round').textContent = `${lastGame.quanfengName}圈 · 第${(lastRoom && lastRoom.handNo) || ''}局`;
+      $('tb-round').textContent = `${lastGame.quanfengName}圈·第${(lastRoom && lastRoom.handNo) || ''}局 · ${minFan}番起`;
       $('tb-wall').textContent = `余 ${lastGame.wallCount} 张`;
+      const cur = lastGame.players.find((p) => p.seat === lastGame.current);
+      if (lastGame.phase === 'ended') $('tb-turn').textContent = '本局结束';
+      else if (lastGame.phase === 'claiming') $('tb-turn').textContent = '等待认领';
+      else $('tb-turn').textContent = cur ? `轮到：${cur.name}（${cur.menfengName}）` : '';
     } else {
-      $('tb-round').textContent = '等待开局';
+      $('tb-round').textContent = `等待开局 · ${minFan}番起`;
       $('tb-wall').textContent = '';
+      $('tb-turn').textContent = '';
     }
   }
 
@@ -136,6 +149,11 @@
   function renderWait() {
     const box = $('wait-seats'); box.innerHTML = '';
     const seats = lastRoom ? lastRoom.seats : [];
+    if (lastRoom) {
+      const secs = Math.round((lastRoom.turnTime || 20000) / 1000);
+      const h3 = document.querySelector('#wait-overlay h3');
+      if (h3) h3.textContent = `等待开局 · 出牌 ${secs} 秒 · ${lastRoom.minFan || 8} 番起`;
+    }
     for (let i = 0; i < 4; i++) {
       const s = seats[i] || {};
       const div = document.createElement('div');
@@ -169,7 +187,7 @@
       const rel = (p.seat - view.you + 4) % 4;
       renderSeat(POS[rel], p, view);
     });
-    renderCenter(view);
+    renderCenter();
     renderActions(view);
   }
 
@@ -227,6 +245,7 @@
     const w = document.createElement('span'); w.className = 'wind'; w.textContent = p.menfengName; info.appendChild(w);
     const nm = document.createElement('span'); nm.textContent = p.name + (p.seat === lastGame.you ? '（你）' : ''); info.appendChild(nm);
     const sc = document.createElement('span'); sc.className = 'score'; sc.textContent = (p.score >= 0 ? '+' : '') + p.score; info.appendChild(sc);
+    if (p.flowers && p.flowers.length) { const fl = document.createElement('span'); fl.className = 'flower-count'; fl.textContent = '🌸' + p.flowers.length; info.appendChild(fl); }
     return info;
   }
 
@@ -235,44 +254,26 @@
     if (!area) return;
     const frag = document.createDocumentFragment();
     if (pos === 'bottom') {
-      frag.appendChild(riverEl(p, view));
-      const row = document.createElement('div'); row.style.display = 'flex'; row.style.gap = '8px'; row.style.alignItems = 'center'; row.style.flexWrap = 'wrap'; row.style.justifyContent = 'center';
-      row.appendChild(pinfoEl(p));
-      if (p.flowers.length) row.appendChild(flowersEl(p.flowers));
-      if (p.melds.length) row.appendChild(meldsEl(p.melds));
-      frag.appendChild(row);
-      frag.appendChild(myHandEl(p, view));
+      frag.appendChild(riverEl(p, view));               // 我的牌河（靠中央）
+      if (p.melds.length) frag.appendChild(meldsEl(p.melds));
+      frag.appendChild(myHandEl(p, view));              // 手牌
+      frag.appendChild(pinfoEl(p));                     // 我的信息（牌下方）
     } else if (pos === 'top') {
       frag.appendChild(pinfoEl(p));
-      const row = document.createElement('div'); row.style.display = 'flex'; row.style.gap = '6px'; row.style.alignItems = 'center';
-      if (p.melds.length) row.appendChild(meldsEl(p.melds));
-      if (p.flowers.length) row.appendChild(flowersEl(p.flowers));
-      frag.appendChild(row);
+      if (p.melds.length) frag.appendChild(meldsEl(p.melds));
       frag.appendChild(backsEl(p.handCount));
       frag.appendChild(riverEl(p, view));
     } else {
-      // left / right 紧凑竖排
       frag.appendChild(pinfoEl(p));
       frag.appendChild(backsEl(p.handCount));
       if (p.melds.length) frag.appendChild(meldsEl(p.melds));
-      if (p.flowers.length) frag.appendChild(flowersEl(p.flowers));
       frag.appendChild(riverEl(p, view));
     }
     area.appendChild(frag);
   }
 
-  function renderCenter(view) {
-    const c = $('center'); c.innerHTML = '';
-    const ri = document.createElement('div'); ri.className = 'round-info';
-    const cur = view.players.find((p) => p.seat === view.current);
-    ri.innerHTML = `<div class="big">${view.quanfengName}圈</div><div class="turn-arrow">轮到：${cur ? cur.name : ''}（${cur ? cur.menfengName : ''}）</div><div class="last-discard-label">余 ${view.wallCount} 张</div>`;
-    c.appendChild(ri);
-    if (view.lastDiscard) {
-      const ld = document.createElement('div'); ld.style.display = 'flex'; ld.style.flexDirection = 'column'; ld.style.alignItems = 'center';
-      const lbl = document.createElement('div'); lbl.className = 'last-discard-label'; lbl.textContent = '最近打出'; ld.appendChild(lbl);
-      const big = MJ.tileEl(view.lastDiscard.tile); big.style.setProperty('--tw', '34px'); big.style.setProperty('--th', '48px'); ld.appendChild(big);
-      c.appendChild(ld);
-    }
+  function renderCenter() {
+    $('center').innerHTML = ''; // 中央留空：信息移到顶栏，出牌直接进各家牌河
   }
 
   function renderActions(view) {

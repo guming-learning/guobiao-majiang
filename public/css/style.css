@@ -70,10 +70,11 @@ html, body {
 /* ===== 牌桌 ===== */
 #table-screen { background: radial-gradient(circle at 50% 45%, #0e7d44, #053a22); }
 .topbar {
-  display: flex; align-items: center; gap: 12px; padding: 6px 12px; font-size: 13px;
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 12px;
   background: rgba(0,0,0,0.35); border-bottom: 1px solid rgba(232,200,122,0.3);
-  position: relative; z-index: 40;
+  position: relative; z-index: 40; white-space: nowrap; overflow: hidden;
 }
+.topbar #tb-turn { color: #ffe08a; font-weight: 700; }
 .topbar span { color: var(--gold); }
 .topbar #leave-btn { margin-left: auto; }
 
@@ -95,6 +96,7 @@ html, body {
 .pinfo.current { box-shadow: 0 0 0 2px #ffd84d, 0 0 12px #ffd84d; }
 .pinfo .dealer-badge { background: #c5372a; color: #fff; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; }
 .pinfo .offline { color: #ff9a9a; font-size: 11px; }
+.pinfo .flower-count { color: #ff9ad2; font-size: 11px; font-weight: 700; }
 
 /* ===== 麻将牌 ===== */
 .tile {
@@ -131,9 +133,10 @@ html, body {
 .melds { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
 .meld { display: flex; gap: 1px; --tw: clamp(13px, 2.4vw, 22px); --th: clamp(18px, 3.6vw, 30px); }
 
-/* 牌河 */
-.river { display: grid; grid-auto-rows: min-content; gap: 2px; --tw: clamp(12px, 2vw, 18px); --th: clamp(16px, 2.7vw, 24px); justify-content: center; }
-.river.h { grid-template-columns: repeat(8, auto); }
+/* 牌河（每行更多张，降低高度避免上下重合） */
+.river { display: grid; grid-auto-rows: min-content; gap: 2px; --tw: clamp(11px, 1.9vw, 17px); --th: clamp(15px, 2.5vw, 22px); justify-content: center; }
+.river.h { grid-template-columns: repeat(14, auto); }
+.seat-left .river.h, .seat-right .river.h { grid-template-columns: repeat(6, auto); }
 .river .tile.last { box-shadow: 0 0 0 2px #ffd84d, 0 2px 3px rgba(0,0,0,0.4); }
 
 /* 花牌 */
@@ -184,6 +187,18 @@ html, body {
 /* 提示 toast */
 .toast { position: absolute; top: 46%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,0.78); color: #ffe08a; padding: 10px 22px; border-radius: 30px; font-size: 20px; font-weight: 800; opacity: 0; transition: opacity .2s; z-index: 25; pointer-events: none; }
 .toast.show { opacity: 1; }
+
+/* 我的信息在手牌下方，与操作栏留出间距 */
+.seat-bottom .pinfo { margin-top: 3px; margin-bottom: 2px; }
+
+/* 创建房间配置弹窗 */
+.modal-mask { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); z-index: 50; }
+.modal-mask.active { display: flex; }
+.modal-card { width: min(90%, 360px); background: #123a26; border: 1px solid rgba(232,200,122,0.5); border-radius: 14px; padding: 20px; }
+.modal-card h3 { color: var(--gold); text-align: center; margin-bottom: 14px; }
+.modal-card label { display: flex; justify-content: space-between; align-items: center; margin: 14px 0; font-size: 15px; color: #e8f0e8; }
+.modal-card select { padding: 8px 10px; border-radius: 8px; font-size: 15px; min-width: 120px; border: none; background: #fff; color: #222; }
+.modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 
 /* 日志 */
 .log-box { position: absolute; left: 6px; bottom: 60px; width: 150px; max-height: 90px; overflow: hidden; font-size: 10px; color: rgba(255,255,255,0.5); pointer-events: none; }

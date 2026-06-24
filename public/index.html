@@ -38,6 +38,33 @@
     </div>
     <div class="room-list-title">房间列表</div>
     <div id="room-list" class="room-list"></div>
+
+    <!-- 创建房间配置 -->
+    <div id="create-modal" class="modal-mask">
+      <div class="modal-card">
+        <h3>创建房间</h3>
+        <label>出牌时间
+          <select id="cfg-time">
+            <option value="10">10 秒</option>
+            <option value="15">15 秒</option>
+            <option value="20" selected>20 秒</option>
+            <option value="30">30 秒</option>
+            <option value="60">60 秒</option>
+          </select>
+        </label>
+        <label>起胡番数
+          <select id="cfg-fan">
+            <option value="8" selected>8 番</option>
+            <option value="16">16 番</option>
+            <option value="32">32 番</option>
+          </select>
+        </label>
+        <div class="modal-btns">
+          <button id="cfg-cancel" class="btn">取消</button>
+          <button id="cfg-ok" class="btn btn-primary">创建</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- 牌桌 -->
@@ -46,6 +73,7 @@
       <span id="tb-room"></span>
       <span id="tb-round"></span>
       <span id="tb-wall"></span>
+      <span id="tb-turn"></span>
       <button id="sound-btn" class="btn btn-small" title="音效开关">🔊</button>
       <button id="close-room-btn" class="btn btn-small btn-danger" style="display:none">关闭房间</button>
       <button id="leave-btn" class="btn btn-small">退出</button>

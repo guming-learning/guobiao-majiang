@@ -9,11 +9,12 @@ function removeOne(arr, id) { const i = arr.indexOf(id); if (i >= 0) arr.splice(
 function removeN(arr, id, n) { for (let k = 0; k < n; k++) removeOne(arr, id); }
 
 class Game {
-  constructor({ names, scores, dealer, quanfeng, onEvent }) {
+  constructor({ names, scores, dealer, quanfeng, onEvent, minFan }) {
     this.names = names || ['', '', '', ''];
     this.scores = scores || [0, 0, 0, 0]; // 与 Room 共享引用
     this.dealer = dealer;
     this.quanfeng = quanfeng || T.TILE_E;
+    this.minFan = minFan || 8; // 起胡番数
     this.onEvent = onEvent || (() => {});
     this.players = [0, 1, 2, 3].map((s) => ({
       seat: s, hand: [], melds: [], flowers: [], river: [],
@@ -135,7 +136,7 @@ class Game {
     return R.evaluateWin({
       melds: p.melds, concealed, winTile, isZimo,
       quanfeng: this.quanfeng, menfeng: p.menfeng,
-      juezhang, haidi: this.haidi, gang: isGang, flowers: p.flowers,
+      juezhang, haidi: this.haidi, gang: isGang, flowers: p.flowers, minFan: this.minFan,
     });
   }
 
@@ -197,7 +198,7 @@ class Game {
         if (!this.drewThisTurn) return { error: '此时不能自摸' };
         const winTile = this.lastDraw.tile;
         const res = this._evalHu(seat, winTile, { isZimo: true, isGang: this.gangFlag });
-        if (!res.ok) return { error: `不足 8 番（${res.thresholdFan}番）不能和` };
+        if (!res.ok) return { error: `不足 ${this.minFan} 番（${res.thresholdFan}番）不能和` };
         const delta = R.settle([{ seat, score: res.score }], 'zimo', null);
         this._endHand({ type: 'zimo', winners: [{ seat, winTile, ...res }], delta, from: null });
         return { ok: true };
@@ -423,6 +424,7 @@ class Game {
       dealer: this.dealer,
       quanfeng: this.quanfeng,
       quanfengName: R.WIND_NAME[this.quanfeng],
+      minFan: this.minFan,
       wallCount: this.wall.length,
       you: seat,
       players,
