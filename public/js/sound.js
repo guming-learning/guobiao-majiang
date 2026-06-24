@@ -1,42 +1,52 @@
 'use strict';
-// 用 Web Audio 合成音效（无需音频文件）：打牌、吃碰杠、和牌、轮到你、补花
+// 音效：Web Audio 合成的提示音 + 预录中文语音片段（public/audio/*.mp3，无需系统语音包）
 (function () {
   let ctx = null;
   let enabled = localStorage.getItem('mj_sound') !== '0';
-  const tts = ('speechSynthesis' in window) ? window.speechSynthesis : null;
-  let zhVoice = null;
-  function pickVoice() {
-    if (!tts) return;
-    const vs = tts.getVoices() || [];
-    const zh = vs.filter((v) => /^zh\b|zh[-_]/i.test(v.lang) || /chinese|中文|普通话|国语|汉语/i.test(v.name));
-    // 优先本地(离线)语音，避免网络语音（如 Google 普通话）造成的延迟
-    zhVoice = zh.find((v) => v.localService) || zh[0] || null;
-  }
-  if (tts) { pickVoice(); tts.onvoiceschanged = pickVoice; }
 
-  let warmed = false;
+  // ===== 预录语音片段 =====
+  const VOICE_KEYS = [];
+  for (let i = 1; i <= 34; i++) VOICE_KEYS.push('tile_' + i); // 1-27 万条饼，28-34 风/箭
+  ['peng', 'chi', 'gang', 'angang', 'hu', 'zimo', 'qiangganghu', 'buhua', 'liuju'].forEach((k) => VOICE_KEYS.push(k));
+  const rawClips = {};  // key -> ArrayBuffer
+  const clips = {};     // key -> AudioBuffer
+  let fetchedClips = false, voiceGain = null, curVoiceSrc = null;
+
+  function fetchClips() {
+    if (fetchedClips) return; fetchedClips = true;
+    VOICE_KEYS.forEach((k) => {
+      fetch('audio/' + k + '.mp3').then((r) => r.arrayBuffer()).then((buf) => { rawClips[k] = buf; decodeClip(k); }).catch(() => {});
+    });
+  }
+  function decodeClip(k) {
+    if (!ctx || !rawClips[k] || clips[k]) return;
+    try { ctx.decodeAudioData(rawClips[k].slice(0), (b) => { clips[k] = b; }, () => {}); } catch (e) {}
+  }
+  function decodeAll() { VOICE_KEYS.forEach(decodeClip); }
+
+  function playVoice(key) {
+    if (!enabled) return;
+    init();
+    const b = clips[key];
+    if (!ctx || !b) return; // 片段尚未解码（仅极早期可能发生）
+    try {
+      if (curVoiceSrc) { try { curVoiceSrc.stop(); } catch (e) {} curVoiceSrc = null; }
+      if (!voiceGain) { voiceGain = ctx.createGain(); voiceGain.gain.value = 1; voiceGain.connect(ctx.destination); }
+      const src = ctx.createBufferSource();
+      src.buffer = b; src.connect(voiceGain); src.start(0);
+      curVoiceSrc = src;
+      src.onended = () => { if (curVoiceSrc === src) curVoiceSrc = null; };
+    } catch (e) {}
+  }
+  fetchClips();
+
   function init() {
     if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ctx = null; } }
     if (ctx && ctx.state === 'suspended') ctx.resume();
-    if (tts) {
-      if (!zhVoice) pickVoice();
-      if (!warmed) { try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; tts.speak(u); warmed = true; } catch (e) {} }
-    }
+    if (ctx) decodeAll();
   }
 
-  // 中文语音播报（吃/碰/杠/胡/补花、报牌名）—— 仅在正在朗读时打断，避免无谓 cancel 造成的启动延迟
-  function say(text) {
-    if (!enabled || !text || !tts) return;
-    try {
-      if (tts.speaking || tts.pending) tts.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'zh-CN';
-      if (zhVoice) u.voice = zhVoice;
-      u.rate = 1.25; u.pitch = 1; u.volume = 1;
-      tts.speak(u);
-    } catch (e) {}
-  }
-
+  // ===== Web Audio 合成提示音 =====
   function tone(freq, start, dur, type, gain) {
     if (!ctx) return;
     const o = ctx.createOscillator(), g = ctx.createGain();
@@ -48,8 +58,6 @@
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.start(t); o.stop(t + dur + 0.02);
   }
-
-  // 木牌“啪”：短噪声脉冲 + 低频体
   function clack(start, freq, gain) {
     if (!ctx) return;
     const sr = ctx.sampleRate, len = Math.floor(sr * 0.05);
@@ -64,9 +72,11 @@
   }
 
   const SFX = {
-    init, say,
+    init,
+    say(key) { playVoice(key); },               // 动作/状态语音：peng/chi/gang/angang/hu/zimo/qiangganghu/buhua/liuju
+    sayTile(id) { playVoice('tile_' + id); },    // 报牌名
     isEnabled() { return enabled; },
-    setEnabled(v) { enabled = !!v; localStorage.setItem('mj_sound', v ? '1' : '0'); if (v) init(); else if (tts) try { tts.cancel(); } catch (e) {} },
+    setEnabled(v) { enabled = !!v; localStorage.setItem('mj_sound', v ? '1' : '0'); if (v) init(); else if (curVoiceSrc) { try { curVoiceSrc.stop(); } catch (e) {} curVoiceSrc = null; } },
     discard() { if (!enabled) return; init(); clack(0, 1050, 0.34); },
     draw() { if (!enabled) return; init(); clack(0, 1500, 0.16); },
     claim() { if (!enabled) return; init(); clack(0, 1300, 0.34); clack(0.085, 1550, 0.3); },

@@ -17,6 +17,7 @@ class Room {
   constructor(manager) {
     this.id = String(++roomSeq);
     this.manager = manager;
+    this.owner = null; // 房主 playerId
     this.seats = [null, null, null, null]; // 每座位的 playerId
     this.ready = [false, false, false, false];
     this.scores = [0, 0, 0, 0];
@@ -31,6 +32,16 @@ class Room {
 
   isBot(seat) { const pid = this.seats[seat]; const p = pid && this.manager.players.get(pid); return !!(p && p.isBot); }
   hasHumans() { return this.seats.some((pid) => pid && !(this.manager.players.get(pid) || {}).isBot); }
+  reassignOwner() {
+    // 房主仍在座且为真人则保留，否则转给第一位真人，无真人则置空
+    const cur = this.owner && this.manager.players.get(this.owner);
+    if (this.owner && this.seats.includes(this.owner) && cur && !cur.isBot) return;
+    this.owner = null;
+    for (let s = 0; s < 4; s++) {
+      const pid = this.seats[s]; const pl = pid && this.manager.players.get(pid);
+      if (pl && !pl.isBot) { this.owner = pid; break; }
+    }
+  }
   isFull() { return this.seats.every((s) => s !== null); }
   isEmpty() { return this.seats.every((s) => s === null); }
   seatOf(playerId) { return this.seats.indexOf(playerId); }
@@ -82,6 +93,7 @@ class Room {
   roomState() {
     return {
       roomId: this.id,
+      owner: this.owner,
       seats: this.seats.map((pid, i) => ({
         seat: i,
         name: this.playerName(i),
@@ -305,6 +317,7 @@ class RoomManager {
     if (!playerId) return;
     this.leaveRoom(socket, true);
     const room = new Room(this);
+    room.owner = playerId;
     this.rooms.set(room.id, room);
     this._join(socket, room);
   }
@@ -335,7 +348,7 @@ class RoomManager {
       room.removePlayer(playerId);
       socket.leave('room:' + room.id);
       if (!room.inGame() && !room.hasHumans()) { room.destroy(); this.rooms.delete(room.id); }
-      else room.broadcastRoom();
+      else { room.reassignOwner(); room.broadcastRoom(); }
     }
     p.roomId = null;
     if (!silent) socket.emit('leftRoom', {});
@@ -376,6 +389,32 @@ class RoomManager {
     const room = this.rooms.get(p.roomId);
     if (room) room.removeBotSeat(seat);
   }
+  closeRoom(socket) {
+    const playerId = this.socketToPlayer.get(socket.id);
+    const p = this.players.get(playerId);
+    if (!p || !p.roomId) return;
+    const room = this.rooms.get(p.roomId);
+    if (!room) return;
+    if (room.owner !== playerId) { socket.emit('errorMsg', '只有房主可以关闭房间'); return; }
+    // 通知并踢出所有真人，解散房间（含机器人）
+    for (let s = 0; s < 4; s++) {
+      const pid = room.seats[s];
+      if (!pid) continue;
+      const pl = this.players.get(pid);
+      if (pl && !pl.isBot) {
+        pl.roomId = null;
+        const sid = this.socketIdOf(pid);
+        if (sid) {
+          this.io.to(sid).emit('roomClosed', {});
+          const sk = this.io.sockets.sockets.get(sid);
+          if (sk) sk.leave('room:' + room.id);
+        }
+      }
+    }
+    room.destroy();
+    this.rooms.delete(room.id);
+    this.broadcastLobby();
+  }
   disconnect(socket) {
     const playerId = this.socketToPlayer.get(socket.id);
     this.socketToPlayer.delete(socket.id);
@@ -386,7 +425,7 @@ class RoomManager {
     if (p && p.roomId) {
       const room = this.rooms.get(p.roomId);
       if (room) {
-        if (!room.inGame()) { room.removePlayer(playerId); p.roomId = null; if (!room.hasHumans()) { room.destroy(); this.rooms.delete(room.id); } else room.broadcastRoom(); }
+        if (!room.inGame()) { room.removePlayer(playerId); p.roomId = null; if (!room.hasHumans()) { room.destroy(); this.rooms.delete(room.id); } else { room.reassignOwner(); room.broadcastRoom(); } }
         else room.broadcastRoom();
       }
     }

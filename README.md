@@ -9,13 +9,13 @@
 
 - 🀄 **完整国标算番**：81 个番种，DFS 牌型分解 + 并查集去重，严格遵循「不相同 / 不拆移 / 套算一次」原则。
 - 🚪 **免登录**：输入昵称即可进大厅、建房 / 加入、开局。
-- 📱 **手机横屏**：响应式布局，CSS 绘制麻将牌（万红 / 条绿 / 饼蓝 / 字牌 / 花牌）。
+- 📱 **手机横屏**：响应式布局，CSS 绘制麻将牌（万红 / 条绿 / 饼黄 / 字牌 / 花牌）。
 - ✅ **8 番起胡**：不含花牌的番数 ≥ 8 才能和牌（标准国标规则）。
 - 🎴 **完整玩法**：发牌、补花、吃 / 碰 / 明杠 / 暗杠 / 加杠、抢杠和、自摸 / 点和、海底捞月 / 妙手回春 / 杠上开花、流局。
 - 💰 **MCR 计分**：自摸每家付 (番+8)；点和点炮者付 (番+8)、其余两家各付底分 8。
 - 🤝 **真人 + AI**：可凑满 4 人真人对战；也可一键「添加机器人」补满空位，单人即可开玩。
-- 🔊 **音效**：Web Audio 合成的打牌、吃碰杠、和牌、轮到你提示音，可一键静音。
-- 🔁 断线重连与超时自动代打。
+- 🔊 **音效 + 中文语音**：Web Audio 提示音 + **预录中文语音**（报牌名、吃 / 碰 / 杠 / 胡 / 补花），离线可用、**无需系统语音包**，可一键静音。
+- 🚪 **房间管理**：房主可「关闭房间」解散全员；断线重连与超时自动代打。
 
 ## 运行
 
@@ -62,6 +62,8 @@ src/game/
   rooms.js                房间与房间管理、计时器、机器人调度
 public/                   前端（横屏响应式，中文界面）
   index.html  css/style.css  js/tiles.js  js/sound.js  js/app.js
+  audio/                  预录中文语音片段（牌名/吃碰杠胡补花，*.mp3）
+tools/gen_voice.py        语音生成脚本（edge-tts 神经语音，重生成用）
 test/                     fan / game / e2e 测试
 ```
 
@@ -74,7 +76,7 @@ test/                     fan / game / e2e 测试
 
 ## 协议（Socket.IO）
 
-客户端→服务器：`login` `listRooms` `createRoom` `joinRoom` `leaveRoom` `ready` `addBot` `removeBot` `action`
-服务器→客户端：`loggedIn` `lobby` `roomUpdate` `gameState`(按座位脱敏) `event` `errorMsg`
+客户端→服务器：`login` `listRooms` `createRoom` `joinRoom` `leaveRoom` `closeRoom` `ready` `addBot` `removeBot` `action`
+服务器→客户端：`loggedIn` `lobby` `roomUpdate` `gameState`(按座位脱敏) `event` `roomClosed` `errorMsg`
 
 `action` 类型：`discard` `chi` `peng` `gang` `angang` `jiagang` `hu` `zimo` `pass` `next`

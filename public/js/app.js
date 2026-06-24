@@ -58,6 +58,9 @@
 
   // ===== 房间/牌桌 =====
   $('leave-btn').addEventListener('click', () => { socket.emit('leaveRoom'); inRoom = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); });
+  $('close-room-btn').addEventListener('click', () => {
+    if (window.confirm('确定关闭房间并解散所有玩家吗？')) socket.emit('closeRoom');
+  });
   $('ready-btn').addEventListener('click', () => {
     const seat = mySeat(); if (seat < 0) return;
     const cur = lastRoom && lastRoom.seats[seat] ? lastRoom.seats[seat].ready : false;
@@ -87,17 +90,18 @@
       prevMyTurn = myTurn;
       if (view.phase === 'ended' && prevPhase !== 'ended') {
         const r = view.result || {};
-        if (r.type === 'draw') { SFX.draws(); SFX.say('流局'); }
+        if (r.type === 'draw') { SFX.draws(); SFX.say('liuju'); }
         else {
           const mine = r.winners && r.winners.some((w) => w.seat === view.you);
           if (mine) SFX.win(); else SFX.lose();
-          SFX.say(r.type === 'zimo' ? '自摸' : (r.robKong ? '抢杠胡' : '胡'));
+          SFX.say(r.type === 'zimo' ? 'zimo' : (r.robKong ? 'qiangganghu' : 'hu'));
         }
       }
       prevPhase = view.phase;
     }
   });
   socket.on('leftRoom', () => { inRoom = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); });
+  socket.on('roomClosed', () => { inRoom = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); toast('房间已关闭'); });
 
   function mySeat() {
     if (lastGame) return lastGame.you;
@@ -108,6 +112,8 @@
   function renderTopbar() {
     const rid = lastRoom ? lastRoom.roomId : (lastGame ? '' : '');
     $('tb-room').textContent = '房间 ' + rid;
+    const isOwner = !!(lastRoom && lastRoom.owner && lastRoom.owner === myPlayerId);
+    $('close-room-btn').style.display = isOwner ? '' : 'none';
     if (lastGame) {
       $('tb-round').textContent = `${lastGame.quanfengName}圈 · 第${(lastRoom && lastRoom.handNo) || ''}局`;
       $('tb-wall').textContent = `余 ${lastGame.wallCount} 张`;
@@ -349,12 +355,12 @@
 
   // ===== 事件提示 =====
   socket.on('event', (e) => {
-    if (e.type === 'discard') { if (window.SFX) { SFX.discard(); SFX.say(MJ.tileSpeak(e.tile)); } }
+    if (e.type === 'discard') { if (window.SFX) { SFX.discard(); SFX.sayTile(e.tile); } }
     else if (e.type === 'draw') { if (window.SFX) SFX.draw(); }
-    else if (e.type === 'peng') { flash('碰！'); if (window.SFX) { SFX.claim(); SFX.say('碰'); } }
-    else if (e.type === 'chi') { flash('吃！'); if (window.SFX) { SFX.claim(); SFX.say('吃'); } }
-    else if (e.type === 'gang') { flash(e.kind === 'angang' ? '暗杠！' : e.kind === 'jiagang' ? '加杠！' : '杠！'); if (window.SFX) { SFX.claim(); SFX.say(e.kind === 'angang' ? '暗杠' : '杠'); } }
-    else if (e.type === 'flower') { flash('补花'); if (window.SFX) { SFX.flower(); SFX.say('补花'); } }
+    else if (e.type === 'peng') { flash('碰！'); if (window.SFX) { SFX.claim(); SFX.say('peng'); } }
+    else if (e.type === 'chi') { flash('吃！'); if (window.SFX) { SFX.claim(); SFX.say('chi'); } }
+    else if (e.type === 'gang') { flash(e.kind === 'angang' ? '暗杠！' : e.kind === 'jiagang' ? '加杠！' : '杠！'); if (window.SFX) { SFX.claim(); SFX.say(e.kind === 'angang' ? 'angang' : 'gang'); } }
+    else if (e.type === 'flower') { flash('补花'); if (window.SFX) { SFX.flower(); SFX.say('buhua'); } }
   });
 
   let toastTimer = null;
