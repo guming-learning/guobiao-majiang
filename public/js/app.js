@@ -10,6 +10,7 @@
   let lastRoom = null;   // roomState
   let lastGame = null;   // gameState (per-seat view)
   let inRoom = false;
+  let amSpectator = false;
 
   const $ = (id) => document.getElementById(id);
   const screens = { login: $('login-screen'), lobby: $('lobby-screen'), table: $('table-screen') };
@@ -41,6 +42,7 @@
   $('cfg-ok').addEventListener('click', () => {
     const turnTime = parseInt($('cfg-time').value, 10);
     const minFan = parseInt($('cfg-fan').value, 10);
+    amSpectator = false;
     $('create-modal').classList.remove('active');
     socket.emit('createRoom', { turnTime, minFan });
   });
@@ -56,15 +58,19 @@
       card.innerHTML = `<div><div>房间 ${r.roomId}</div><div class="room-names">${names}</div></div>
         <div style="text-align:right"><div class="room-meta">${r.count}/4 ${r.inGame ? '· 游戏中' : ''}</div></div>`;
       const btn = document.createElement('button'); btn.className = 'btn btn-small btn-primary';
-      btn.textContent = r.inGame ? '观战/重连' : (r.count >= 4 ? '已满' : '加入');
+      btn.textContent = r.inGame ? '观战' : (r.count >= 4 ? '已满' : '加入');
       btn.disabled = (r.count >= 4 && !r.inGame);
-      btn.addEventListener('click', () => socket.emit('joinRoom', { roomId: r.roomId }));
+      btn.addEventListener('click', () => {
+        amSpectator = false;
+        if (r.inGame) socket.emit('spectate', { roomId: r.roomId });
+        else socket.emit('joinRoom', { roomId: r.roomId });
+      });
       card.appendChild(btn); list.appendChild(card);
     });
   }
 
   // ===== 房间/牌桌 =====
-  $('leave-btn').addEventListener('click', () => { socket.emit('leaveRoom'); inRoom = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); });
+  $('leave-btn').addEventListener('click', () => { socket.emit('leaveRoom'); inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); });
   $('close-room-btn').addEventListener('click', () => {
     if (window.confirm('确定关闭房间并解散所有玩家吗？')) socket.emit('closeRoom');
   });
@@ -82,17 +88,19 @@
   if (window.SFX) $('sound-btn').textContent = SFX.isEnabled() ? '🔊' : '🔇';
 
   let prevMyTurn = false, prevPhase = null;
+  socket.on('spectating', () => { amSpectator = true; inRoom = true; lastGame = null; lastRoom = null; showScreen('table'); renderTopbar(); updateOverlays(); });
   socket.on('roomUpdate', (rs) => {
     lastRoom = rs; inRoom = true; showScreen('table');
     renderTopbar();
     updateOverlays();
   });
   socket.on('gameState', (view) => {
+    amSpectator = !!view.spectator;
     lastGame = view; inRoom = true; showScreen('table');
     renderBoard(view); renderTopbar(); updateOverlays();
     // 音效：轮到你 / 本局结束
     if (window.SFX) {
-      const myTurn = view.phase === 'acting' && view.current === view.you && view.actions && view.actions.type === 'acting';
+      const myTurn = !amSpectator && view.phase === 'acting' && view.current === view.you && view.actions && view.actions.type === 'acting';
       if (myTurn && !prevMyTurn) SFX.turn();
       prevMyTurn = myTurn;
       if (view.phase === 'ended' && prevPhase !== 'ended') {
@@ -100,15 +108,15 @@
         if (r.type === 'draw') { SFX.draws(); SFX.say('liuju'); }
         else {
           const mine = r.winners && r.winners.some((w) => w.seat === view.you);
-          if (mine) SFX.win(); else SFX.lose();
+          if (amSpectator || mine) SFX.win(); else SFX.lose();
           SFX.say(r.type === 'zimo' ? 'zimo' : (r.robKong ? 'qiangganghu' : 'hu'));
         }
       }
       prevPhase = view.phase;
     }
   });
-  socket.on('leftRoom', () => { inRoom = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); });
-  socket.on('roomClosed', () => { inRoom = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); toast('房间已关闭'); });
+  socket.on('leftRoom', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); });
+  socket.on('roomClosed', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); toast('房间已关闭'); });
 
   function mySeat() {
     if (lastGame) return lastGame.you;
@@ -140,9 +148,10 @@
   function updateOverlays() {
     const playing = lastGame && lastGame.phase !== 'ended' && lastGame.phase !== 'init';
     const ended = lastGame && lastGame.phase === 'ended';
-    $('wait-overlay').classList.toggle('active', !playing && !ended);
+    const showWait = !playing && !ended && !amSpectator; // 观战者不显示准备浮层
+    $('wait-overlay').classList.toggle('active', showWait);
     $('result-overlay').classList.toggle('active', !!ended);
-    if (!playing && !ended) renderWait();
+    if (showWait) renderWait();
     if (ended) renderResult(lastGame);
   }
 
@@ -244,7 +253,7 @@
     info.className = 'pinfo' + (p.isCurrent ? ' current' : '');
     if (p.isDealer) { const b = document.createElement('span'); b.className = 'dealer-badge'; b.textContent = '庄'; info.appendChild(b); }
     const w = document.createElement('span'); w.className = 'wind'; w.textContent = p.menfengName; info.appendChild(w);
-    const nm = document.createElement('span'); nm.textContent = p.name + (p.seat === lastGame.you ? '（你）' : ''); info.appendChild(nm);
+    const nm = document.createElement('span'); nm.textContent = p.name + (!amSpectator && p.seat === lastGame.you ? '（你）' : ''); info.appendChild(nm);
     const sc = document.createElement('span'); sc.className = 'score'; sc.textContent = (p.score >= 0 ? '+' : '') + p.score; info.appendChild(sc);
     if (p.flowers && p.flowers.length) { const fl = document.createElement('span'); fl.className = 'flower-count'; fl.textContent = '🌸' + p.flowers.length; info.appendChild(fl); }
     return info;
@@ -264,7 +273,8 @@
     const frag = document.createDocumentFragment();
     if (pos === 'bottom') {
       frag.appendChild(riverEl(p, view));               // 我的牌河（靠中央）
-      frag.appendChild(myHandEl(p, view));              // 手牌
+      if (p.hand) frag.appendChild(myHandEl(p, view));  // 手牌
+      else frag.appendChild(backsEl(p.handCount));      // 观战：暗牌
       frag.appendChild(infoRowEl(p));                   // 名字+副露（手牌下方）
     } else if (pos === 'top') {
       frag.appendChild(infoRowEl(p));                   // 名字+副露
@@ -285,6 +295,7 @@
   function renderActions(view) {
     const bar = $('action-bar'); bar.innerHTML = ''; bar.classList.remove('show');
     const hint = $('tb-hint');
+    if (amSpectator) { hint.textContent = '👁 观战中'; return; }
     const a = view.actions;
     if (!a || a.type === 'none') { hint.textContent = ''; return; } // 等待时顶栏“轮到X”已说明
     if (a.type === 'acting') {
@@ -354,6 +365,11 @@
         row.appendChild(sc);
       });
       card.appendChild(row);
+    }
+    if (amSpectator) {
+      const note = document.createElement('div'); note.style.marginTop = '8px'; note.style.color = '#9fc1a0'; note.textContent = '👁 观战中';
+      card.appendChild(note);
+      return;
     }
     const seat = mySeat();
     const myReady = lastRoom && seat >= 0 && lastRoom.seats[seat] ? lastRoom.seats[seat].ready : false;

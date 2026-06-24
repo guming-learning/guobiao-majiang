@@ -19,6 +19,7 @@ io.on('connection', (socket) => {
   socket.on('listRooms', () => socket.emit('lobby', manager.lobbyState()));
   socket.on('createRoom', (d) => manager.createRoom(socket, d || {}));
   socket.on('joinRoom', (d) => manager.joinRoom(socket, d && d.roomId));
+  socket.on('spectate', (d) => manager.spectate(socket, d && d.roomId));
   socket.on('leaveRoom', () => manager.leaveRoom(socket, false));
   socket.on('ready', (d) => manager.setReady(socket, d && d.ready));
   socket.on('addBot', () => manager.addBot(socket));

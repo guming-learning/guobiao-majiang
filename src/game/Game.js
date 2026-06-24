@@ -436,6 +436,17 @@ class Game {
       log: this.log.slice(-12),
     };
   }
+
+  // 观战视图：以 persp 座位为下方，但隐藏所有玩家的暗牌、无任何操作
+  getSpectatorView(persp = 0) {
+    const v = this.getView(persp);
+    v.players.forEach((p) => { p.hand = null; });
+    v.myDraw = null;
+    v.actions = { type: 'none' };
+    v.spectator = true;
+    v.you = persp;
+    return v;
+  }
 }
 
 module.exports = { Game };

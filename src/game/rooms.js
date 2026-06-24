@@ -32,7 +32,12 @@ class Room {
     this.timerKind = null;
     this.botTimer = null;
     this.botWatchdog = null;
+    this.spectators = []; // 观战者 playerId 列表（不占座位）
   }
+
+  isSpectator(playerId) { return this.spectators.includes(playerId); }
+  addSpectator(playerId) { if (!this.isSpectator(playerId)) this.spectators.push(playerId); }
+  removeSpectator(playerId) { const i = this.spectators.indexOf(playerId); if (i >= 0) this.spectators.splice(i, 1); }
 
   isBot(seat) { const pid = this.seats[seat]; const p = pid && this.manager.players.get(pid); return !!(p && p.isBot); }
   hasHumans() { return this.seats.some((pid) => pid && !(this.manager.players.get(pid) || {}).isBot); }
@@ -90,8 +95,13 @@ class Room {
     const sid = this.manager.socketIdOf(pid);
     if (sid) this.manager.io.to(sid).emit(event, data);
   }
+  emitToPlayer(pid, event, data) {
+    const sid = this.manager.socketIdOf(pid);
+    if (sid) this.manager.io.to(sid).emit(event, data);
+  }
   emitAll(event, data) {
     for (let s = 0; s < 4; s++) this.emitTo(s, event, data);
+    for (const pid of this.spectators) this.emitToPlayer(pid, event, data);
   }
 
   roomState() {
@@ -111,6 +121,7 @@ class Room {
       handNo: this.handNo,
       turnTime: this.turnTime,
       minFan: this.minFan,
+      spectators: this.spectators.length,
       inGame: this.inGame(),
       phase: this.game ? this.game.phase : 'waiting',
     };
@@ -122,6 +133,10 @@ class Room {
     if (!this.game) return;
     for (let s = 0; s < 4; s++) {
       if (this.seats[s]) this.emitTo(s, 'gameState', this.game.getView(s));
+    }
+    if (this.spectators.length) {
+      const sv = this.game.getSpectatorView(this.dealer);
+      for (const pid of this.spectators) this.emitToPlayer(pid, 'gameState', sv);
     }
   }
 
@@ -287,6 +302,11 @@ class Room {
     this.clearTimer();
     if (this.botTimer) { clearTimeout(this.botTimer); this.botTimer = null; }
     if (this.botWatchdog) { clearTimeout(this.botWatchdog); this.botWatchdog = null; }
+    for (const pid of this.spectators) {
+      this.emitToPlayer(pid, 'roomClosed', {});
+      const p = this.manager.players.get(pid); if (p) p.roomId = null;
+    }
+    this.spectators = [];
     for (let s = 0; s < 4; s++) if (this.isBot(s)) this.manager.players.delete(this.seats[s]);
     this.seats = [null, null, null, null];
   }
@@ -337,12 +357,16 @@ class RoomManager {
     else { p.name = name; p.socketId = socket.id; }
     this.socketToPlayer.set(socket.id, playerId);
     socket.emit('loggedIn', { playerId, name });
-    // 若该玩家原本在某房间，重连后恢复
+    // 若该玩家原本在某房间，重连后恢复（座位玩家或观战者）
     if (p.roomId && this.rooms.has(p.roomId)) {
       const room = this.rooms.get(p.roomId);
       socket.join('room:' + room.id);
       room.broadcastRoom();
-      if (room.game) socket.emit('gameState', room.game.getView(room.seatOf(playerId)));
+      if (room.game) {
+        const seat = room.seatOf(playerId);
+        if (seat >= 0) socket.emit('gameState', room.game.getView(seat));
+        else if (room.isSpectator(playerId)) { socket.emit('spectating', { roomId: room.id }); socket.emit('gameState', room.game.getSpectatorView(room.dealer)); }
+      }
     }
     this.broadcastLobby();
   }
@@ -386,6 +410,32 @@ class RoomManager {
     if (room.game && room.game.phase !== 'ended') socket.emit('gameState', room.game.getView(seat));
     this.broadcastLobby();
   }
+  spectate(socket, roomId) {
+    const playerId = this.socketToPlayer.get(socket.id);
+    if (!playerId) return;
+    const p = this.players.get(playerId);
+    const room = this.rooms.get(roomId);
+    if (!room) { socket.emit('errorMsg', '房间不存在'); return; }
+    // 原本在座 -> 重连回自己的座位
+    if (room.seatOf(playerId) >= 0) {
+      if (p.roomId && p.roomId !== room.id) this.leaveRoom(socket, true);
+      p.roomId = room.id;
+      socket.join('room:' + room.id);
+      room.broadcastRoom();
+      if (room.game) socket.emit('gameState', room.game.getView(room.seatOf(playerId)));
+      this.broadcastLobby();
+      return;
+    }
+    // 否则作为观战者加入
+    this.leaveRoom(socket, true);
+    room.addSpectator(playerId);
+    p.roomId = room.id;
+    socket.join('room:' + room.id);
+    socket.emit('spectating', { roomId: room.id });
+    if (room.game) socket.emit('gameState', room.game.getSpectatorView(room.dealer));
+    room.broadcastRoom();
+    this.broadcastLobby();
+  }
   leaveRoom(socket, silent) {
     const playerId = this.socketToPlayer.get(socket.id);
     if (!playerId) return;
@@ -393,6 +443,7 @@ class RoomManager {
     if (!p || !p.roomId) return;
     const room = this.rooms.get(p.roomId);
     if (room) {
+      room.removeSpectator(playerId);
       room.removePlayer(playerId);
       socket.leave('room:' + room.id);
       if (!room.inGame() && !room.hasHumans()) { room.destroy(); this.rooms.delete(room.id); }
@@ -473,8 +524,13 @@ class RoomManager {
     if (p && p.roomId) {
       const room = this.rooms.get(p.roomId);
       if (room) {
-        if (!room.inGame()) { room.removePlayer(playerId); p.roomId = null; if (!room.hasHumans()) { room.destroy(); this.rooms.delete(room.id); } else { room.reassignOwner(); room.broadcastRoom(); } }
-        else room.broadcastRoom();
+        if (room.isSpectator(playerId)) {
+          room.removeSpectator(playerId); p.roomId = null;
+          if (!room.inGame() && !room.hasHumans()) { room.destroy(); this.rooms.delete(room.id); } else room.broadcastRoom();
+        } else if (!room.inGame()) {
+          room.removePlayer(playerId); p.roomId = null;
+          if (!room.hasHumans()) { room.destroy(); this.rooms.delete(room.id); } else { room.reassignOwner(); room.broadcastRoom(); }
+        } else room.broadcastRoom();
       }
     }
     this.broadcastLobby();
