@@ -6,7 +6,6 @@ const AI = require('./ai');
 
 const CLAIM_TIMEOUT = 15000;  // 认领超时（自动过）
 const ACT_TIMEOUT = 30000;    // 出牌超时（自动打出）
-const NEXT_TIMEOUT = 15000;   // 局间续局超时（自动开下一局）
 const BOT_WATCHDOG = 3000;    // 机器人硬超时(3秒)：超时未出牌/认领则强制安全处理，防止卡住
 let botSeq = 1;
 // 机器人思考延迟（BOT_FAST=1 时极快，便于测试）
@@ -249,7 +248,12 @@ class Room {
       }
     } else if (phase === 'ended') {
       let changed = false;
-      for (let s = 0; s < 4; s++) if (this.isBot(s) && this.seats[s] && !this.ready[s]) { this.ready[s] = true; changed = true; }
+      for (let s = 0; s < 4; s++) {
+        const pid = this.seats[s];
+        if (!pid || this.ready[s]) continue;
+        const offline = !this.isBot(s) && this.manager.socketIdOf(pid) == null; // 掉线者不阻塞续局
+        if (this.isBot(s) || offline) { this.ready[s] = true; changed = true; }
+      }
       if (changed) this.maybeNext();
     }
   }
@@ -324,10 +328,8 @@ class Room {
       this.timerKind = 'acting';
       if (this.turnTime > 0) this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; this.autoDiscard(); this.afterChange(); }, this.turnTime);
       // turnTime === 0：无限制，不设出牌超时
-    } else if (phase === 'ended') {
-      this.timerKind = 'ended';
-      this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; if (this.isFull()) this.nextHand(); }, NEXT_TIMEOUT);
     }
+    // 局间不再自动续局：需所有玩家点“继续下一局”确认（机器人/掉线者自动就绪）
   }
   autoDiscard() {
     if (!this.game || this.game.phase !== 'acting') return;
