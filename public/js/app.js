@@ -249,24 +249,29 @@
     return info;
   }
 
+  function infoRowEl(p) {
+    const row = document.createElement('div');
+    row.className = 'info-row';
+    row.appendChild(pinfoEl(p));
+    if (p.melds.length) row.appendChild(meldsEl(p.melds)); // 副露放在名字右侧
+    return row;
+  }
+
   function renderSeat(pos, p, view) {
     const area = document.querySelector('.seat-area.seat-' + pos);
     if (!area) return;
     const frag = document.createDocumentFragment();
     if (pos === 'bottom') {
       frag.appendChild(riverEl(p, view));               // 我的牌河（靠中央）
-      if (p.melds.length) frag.appendChild(meldsEl(p.melds));
       frag.appendChild(myHandEl(p, view));              // 手牌
-      frag.appendChild(pinfoEl(p));                     // 我的信息（牌下方）
+      frag.appendChild(infoRowEl(p));                   // 名字+副露（手牌下方）
     } else if (pos === 'top') {
-      frag.appendChild(pinfoEl(p));
-      if (p.melds.length) frag.appendChild(meldsEl(p.melds));
+      frag.appendChild(infoRowEl(p));                   // 名字+副露
       frag.appendChild(backsEl(p.handCount));
       frag.appendChild(riverEl(p, view));
     } else {
-      frag.appendChild(pinfoEl(p));
+      frag.appendChild(infoRowEl(p));                   // 名字+副露
       frag.appendChild(backsEl(p.handCount));
-      if (p.melds.length) frag.appendChild(meldsEl(p.melds));
       frag.appendChild(riverEl(p, view));
     }
     area.appendChild(frag);
@@ -277,24 +282,24 @@
   }
 
   function renderActions(view) {
-    const bar = $('action-bar'); bar.innerHTML = '';
+    const bar = $('action-bar'); bar.innerHTML = ''; bar.classList.remove('show');
+    const hint = $('tb-hint');
     const a = view.actions;
-    if (!a || a.type === 'none') {
-      if (view.phase === 'claiming') bar.innerHTML = '<span class="hint-text">等待其他玩家认领…</span>';
-      else if (view.phase === 'acting') { const cur = view.players.find((p) => p.seat === view.current); bar.innerHTML = `<span class="hint-text">等待 ${cur ? cur.name : ''} 出牌…</span>`; }
-      return;
-    }
+    if (!a || a.type === 'none') { hint.textContent = ''; return; } // 等待时顶栏“轮到X”已说明
     if (a.type === 'acting') {
+      hint.textContent = '该你出牌';
       if (a.zimo) addBtn(bar, '自摸', 'act-hu', () => sendAction({ type: 'zimo' }));
       (a.angang || []).forEach((t) => addBtn(bar, '暗杠' + MJ.tileText(t), 'act-gang', () => sendAction({ type: 'angang', tile: t })));
       (a.jiagang || []).forEach((t) => addBtn(bar, '加杠' + MJ.tileText(t), 'act-gang', () => sendAction({ type: 'jiagang', tile: t })));
-      const hint = document.createElement('span'); hint.className = 'hint-text'; hint.textContent = '请点击手牌出牌'; bar.appendChild(hint);
+      if (bar.childElementCount) bar.classList.add('show');
     } else if (a.type === 'claiming') {
+      hint.textContent = '请选择';
       if (a.hu) addBtn(bar, a.kind === 'jiagang' ? '抢杠和' : '和', 'act-hu', () => sendAction({ type: 'hu' }));
       if (a.gang) addBtn(bar, '杠', 'act-gang', () => sendAction({ type: 'gang' }));
       if (a.peng) addBtn(bar, '碰', 'act-peng', () => sendAction({ type: 'peng' }));
       if (a.chi) a.chi.forEach((opt) => addBtn(bar, '吃 ' + opt.map(MJ.tileText).join(''), 'act-chi', () => sendAction({ type: 'chi', tiles: opt })));
       addBtn(bar, '过', 'act-pass', () => sendAction({ type: 'pass' }));
+      bar.classList.add('show');
     }
   }
   function addBtn(bar, text, cls, fn) {

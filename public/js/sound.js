@@ -87,4 +87,11 @@
     draws() { if (!enabled) return; init(); tone(440, 0, 0.25, 'sine', 0.16); },
   };
   window.SFX = SFX;
+
+  // 切到后台/失焦再回来后，浏览器会挂起音频上下文——重新聚焦或下次触摸时恢复
+  function resumeAudio() { try { if (ctx && ctx.state === 'suspended') ctx.resume(); } catch (e) {} }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) resumeAudio(); });
+  window.addEventListener('focus', resumeAudio);
+  window.addEventListener('pageshow', resumeAudio);
+  ['pointerdown', 'touchstart', 'keydown'].forEach((ev) => document.addEventListener(ev, resumeAudio, { passive: true }));
 })();
