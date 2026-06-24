@@ -24,6 +24,7 @@
   function doLogin() {
     const name = $('name-input').value.trim();
     if (!name) { toast('请输入昵称'); return; }
+    if (window.SFX) SFX.init(); // 用户手势内激活音频
     myName = name; localStorage.setItem('mj_name', name);
     socket.emit('login', { playerId: myPlayerId, name });
   }
@@ -62,7 +63,15 @@
     const cur = lastRoom && lastRoom.seats[seat] ? lastRoom.seats[seat].ready : false;
     socket.emit('ready', { ready: !cur });
   });
+  $('add-bot-btn').addEventListener('click', () => socket.emit('addBot'));
+  $('sound-btn').addEventListener('click', () => {
+    const on = !(window.SFX && SFX.isEnabled());
+    if (window.SFX) SFX.setEnabled(on);
+    $('sound-btn').textContent = on ? '🔊' : '🔇';
+  });
+  if (window.SFX) $('sound-btn').textContent = SFX.isEnabled() ? '🔊' : '🔇';
 
+  let prevMyTurn = false, prevPhase = null;
   socket.on('roomUpdate', (rs) => {
     lastRoom = rs; inRoom = true; showScreen('table');
     renderTopbar();
@@ -71,6 +80,19 @@
   socket.on('gameState', (view) => {
     lastGame = view; inRoom = true; showScreen('table');
     renderBoard(view); renderTopbar(); updateOverlays();
+    // 音效：轮到你 / 本局结束
+    if (window.SFX) {
+      const myTurn = view.phase === 'acting' && view.current === view.you && view.actions && view.actions.type === 'acting';
+      if (myTurn && !prevMyTurn) SFX.turn();
+      prevMyTurn = myTurn;
+      if (view.phase === 'ended' && prevPhase !== 'ended') {
+        const r = view.result || {};
+        if (r.type === 'draw') SFX.draws();
+        else if (r.winners && r.winners.some((w) => w.seat === view.you)) SFX.win();
+        else SFX.lose();
+      }
+      prevPhase = view.phase;
+    }
   });
   socket.on('leftRoom', () => { inRoom = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); });
 
@@ -109,14 +131,25 @@
       const s = seats[i] || {};
       const div = document.createElement('div');
       div.className = 'wait-seat' + (s.ready ? ' ready' : '');
-      if (s.name) div.innerHTML = `<div class="ws-name">${s.name}${s.playerId === myPlayerId ? '（你）' : ''}</div><div class="ws-status">${s.ready ? '✅ 已准备' : '⏳ 未准备'}</div>`;
-      else div.innerHTML = `<div class="ws-name ws-empty">空座位</div><div class="ws-status ws-empty">等待加入</div>`;
+      if (s.name) {
+        const tag = s.isBot ? ' 🤖' : (s.playerId === myPlayerId ? '（你）' : '');
+        div.innerHTML = `<div class="ws-name">${s.name}${tag}</div><div class="ws-status">${s.ready ? '✅ 已准备' : '⏳ 未准备'}</div>`;
+        if (s.isBot) {
+          const rm = document.createElement('button'); rm.className = 'btn btn-small bot-remove'; rm.textContent = '移除';
+          rm.addEventListener('click', () => socket.emit('removeBot', { seat: i }));
+          div.appendChild(rm);
+        }
+      } else {
+        div.innerHTML = `<div class="ws-name ws-empty">空座位</div><div class="ws-status ws-empty">等待加入</div>`;
+      }
       box.appendChild(div);
     }
     const seat = mySeat();
     const ready = seat >= 0 && seats[seat] ? seats[seat].ready : false;
     const btn = $('ready-btn'); btn.textContent = ready ? '取消准备' : '准备';
     btn.disabled = seat < 0;
+    const full = seats.filter((x) => x && x.name).length >= 4;
+    $('add-bot-btn').disabled = full;
   }
 
   // ===== 牌桌渲染 =====
@@ -313,12 +346,12 @@
 
   // ===== 事件提示 =====
   socket.on('event', (e) => {
-    const names = lastGame ? lastGame.players : null;
-    const nm = (s) => (names && names[s] ? names[s].name : '');
-    if (e.type === 'peng') flash('碰！');
-    else if (e.type === 'chi') flash('吃！');
-    else if (e.type === 'gang') flash(e.kind === 'angang' ? '暗杠！' : e.kind === 'jiagang' ? '加杠！' : '杠！');
-    else if (e.type === 'flower') flash('补花');
+    if (e.type === 'discard') { if (window.SFX) SFX.discard(); }
+    else if (e.type === 'draw') { if (window.SFX) SFX.draw(); }
+    else if (e.type === 'peng') { flash('碰！'); if (window.SFX) SFX.claim(); }
+    else if (e.type === 'chi') { flash('吃！'); if (window.SFX) SFX.claim(); }
+    else if (e.type === 'gang') { flash(e.kind === 'angang' ? '暗杠！' : e.kind === 'jiagang' ? '加杠！' : '杠！'); if (window.SFX) SFX.claim(); }
+    else if (e.type === 'flower') { flash('补花'); if (window.SFX) SFX.flower(); }
   });
 
   let toastTimer = null;

@@ -8,6 +8,8 @@ const CLAIM_TIMEOUT = 15000;  // 认领超时（自动过）
 const ACT_TIMEOUT = 30000;    // 出牌超时（自动打出）
 const NEXT_TIMEOUT = 15000;   // 局间续局超时（自动开下一局）
 let botSeq = 1;
+// 机器人思考延迟（BOT_FAST=1 时极快，便于测试）
+function botDelay() { return process.env.BOT_FAST ? 10 + Math.random() * 20 : 700 + Math.random() * 600; }
 
 let roomSeq = 1000;
 
@@ -199,11 +201,11 @@ class Room {
     const phase = this.game.phase;
     if (phase === 'acting') {
       const seat = this.game.current;
-      if (this.isBot(seat)) this.botTimer = setTimeout(() => { this.botTimer = null; this._botAct(seat); }, 700 + Math.random() * 500);
+      if (this.isBot(seat)) this.botTimer = setTimeout(() => { this.botTimer = null; this._botAct(seat); }, botDelay());
     } else if (phase === 'claiming') {
       const opts = this.game.claim.options;
       const pending = Object.keys(opts).some((s) => this.isBot(parseInt(s, 10)) && !this.game.claim.responses[s]);
-      if (pending) this.botTimer = setTimeout(() => { this.botTimer = null; this._botClaims(); }, 600 + Math.random() * 400);
+      if (pending) this.botTimer = setTimeout(() => { this.botTimer = null; this._botClaims(); }, botDelay());
     } else if (phase === 'ended') {
       let changed = false;
       for (let s = 0; s < 4; s++) if (this.isBot(s) && this.seats[s] && !this.ready[s]) { this.ready[s] = true; changed = true; }
@@ -332,7 +334,7 @@ class RoomManager {
     if (room) {
       room.removePlayer(playerId);
       socket.leave('room:' + room.id);
-      if (room.isEmpty() && !room.inGame()) { room.clearTimer(); this.rooms.delete(room.id); }
+      if (!room.inGame() && !room.hasHumans()) { room.destroy(); this.rooms.delete(room.id); }
       else room.broadcastRoom();
     }
     p.roomId = null;
@@ -359,17 +361,32 @@ class RoomManager {
     const r = room.handleAction(playerId, action);
     if (r && r.error) socket.emit('errorMsg', r.error);
   }
+  addBot(socket) {
+    const playerId = this.socketToPlayer.get(socket.id);
+    const p = this.players.get(playerId);
+    if (!p || !p.roomId) return;
+    const room = this.rooms.get(p.roomId);
+    if (!room) return;
+    if (room.addBot() < 0) socket.emit('errorMsg', '无法添加机器人');
+  }
+  removeBot(socket, seat) {
+    const playerId = this.socketToPlayer.get(socket.id);
+    const p = this.players.get(playerId);
+    if (!p || !p.roomId) return;
+    const room = this.rooms.get(p.roomId);
+    if (room) room.removeBotSeat(seat);
+  }
   disconnect(socket) {
     const playerId = this.socketToPlayer.get(socket.id);
     this.socketToPlayer.delete(socket.id);
     if (!playerId) return;
     const p = this.players.get(playerId);
     if (p) p.socketId = null;
-    // 游戏中保留座位（自动代打），房间无人且非游戏中则清理
+    // 游戏中保留座位（自动代打），房间无真人且非游戏中则清理
     if (p && p.roomId) {
       const room = this.rooms.get(p.roomId);
       if (room) {
-        if (!room.inGame()) { room.removePlayer(playerId); if (room.isEmpty()) { room.clearTimer(); this.rooms.delete(room.id); } else room.broadcastRoom(); p.roomId = null; }
+        if (!room.inGame()) { room.removePlayer(playerId); p.roomId = null; if (!room.hasHumans()) { room.destroy(); this.rooms.delete(room.id); } else room.broadcastRoom(); }
         else room.broadcastRoom();
       }
     }

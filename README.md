@@ -13,7 +13,9 @@
 - ✅ **8 番起胡**：不含花牌的番数 ≥ 8 才能和牌（标准国标规则）。
 - 🎴 **完整玩法**：发牌、补花、吃 / 碰 / 明杠 / 暗杠 / 加杠、抢杠和、自摸 / 点和、海底捞月 / 妙手回春 / 杠上开花、流局。
 - 💰 **MCR 计分**：自摸每家付 (番+8)；点和点炮者付 (番+8)、其余两家各付底分 8。
-- 🤝 **真人对战**：必须凑满 4 人且全部准备后开局；支持断线重连与超时自动代打。
+- 🤝 **真人 + AI**：可凑满 4 人真人对战；也可一键「添加机器人」补满空位，单人即可开玩。
+- 🔊 **音效**：Web Audio 合成的打牌、吃碰杠、和牌、轮到你提示音，可一键静音。
+- 🔁 断线重连与超时自动代打。
 
 ## 运行
 
@@ -31,7 +33,7 @@ npm start
 
 1. 输入昵称 → 进入大厅。
 2. 「创建房间」或在列表中「加入」一个房间。
-3. 4 人到齐后各自点「准备」，自动开局。
+3. 4 人到齐后各自点「准备」，自动开局。人不够时点「添加机器人」补满。
 4. 轮到你时点击手牌打出；可吃 / 碰 / 杠 / 和（满 8 番才出现「和」按钮）。
 5. 一局结束显示番种与分数，点「继续」开下一局（庄家和或流局连庄，否则轮庄）。
 
@@ -54,11 +56,12 @@ src/mahjong/              算番引擎（移植自 GB-Mahjong）
   handtiles.js            手牌、字符串解析
   fan.js                  81 番算番器、和牌判断、听牌
 src/game/
-  rules.js                牌墙、门风/圈风、MCR 计分、算番桥接
+  rules.js                牌墙、门风/圈风、MCR 计分、算番桥接、听牌
   Game.js                 单局状态机（出牌/认领优先级/抢杠/结算）
-  rooms.js                房间与房间管理、计时器
+  ai.js                   机器人决策（听牌效率弃牌 + 保守认领）
+  rooms.js                房间与房间管理、计时器、机器人调度
 public/                   前端（横屏响应式，中文界面）
-  index.html  css/style.css  js/tiles.js  js/app.js
+  index.html  css/style.css  js/tiles.js  js/sound.js  js/app.js
 test/                     fan / game / e2e 测试
 ```
 
@@ -71,7 +74,7 @@ test/                     fan / game / e2e 测试
 
 ## 协议（Socket.IO）
 
-客户端→服务器：`login` `listRooms` `createRoom` `joinRoom` `leaveRoom` `ready` `action`
+客户端→服务器：`login` `listRooms` `createRoom` `joinRoom` `leaveRoom` `ready` `addBot` `removeBot` `action`
 服务器→客户端：`loggedIn` `lobby` `roomUpdate` `gameState`(按座位脱敏) `event` `errorMsg`
 
 `action` 类型：`discard` `chi` `peng` `gang` `angang` `jiagang` `hu` `zimo` `pass` `next`

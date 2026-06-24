@@ -21,6 +21,8 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', (d) => manager.joinRoom(socket, d && d.roomId));
   socket.on('leaveRoom', () => manager.leaveRoom(socket, false));
   socket.on('ready', (d) => manager.setReady(socket, d && d.ready));
+  socket.on('addBot', () => manager.addBot(socket));
+  socket.on('removeBot', (d) => manager.removeBot(socket, d && d.seat));
   socket.on('action', (d) => manager.action(socket, d || {}));
   socket.on('disconnect', () => manager.disconnect(socket));
 });

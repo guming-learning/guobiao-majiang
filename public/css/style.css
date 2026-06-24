@@ -161,6 +161,8 @@ html, body {
 .overlay-card h3 { color: var(--gold); margin-bottom: 14px; }
 .overlay-tip { margin-top: 12px; font-size: 12px; color: #9fc1a0; }
 .wait-seats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+.wait-btns { display: flex; gap: 10px; justify-content: center; }
+.bot-remove { margin-top: 6px; background: #6b2f2f; padding: 4px 10px; font-size: 12px; }
 .wait-seat { padding: 12px; border-radius: 10px; background: rgba(0,0,0,0.3); font-size: 14px; }
 .wait-seat.ready { box-shadow: 0 0 0 2px #7ed957; }
 .wait-seat .ws-name { font-weight: 700; }
