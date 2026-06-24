@@ -104,8 +104,10 @@ html, body {
   border: 1px solid var(--tile-edge); border-radius: 6px;
   box-shadow: 0 2px 2px rgba(0,0,0,0.35), inset 0 -3px 0 #e6dcc2;
   display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
-  width: var(--tw, 40px); height: var(--th, 56px); flex: 0 0 auto; line-height: 1;
+  width: var(--tw, 40px); aspect-ratio: 17 / 22; flex: 0 0 auto; line-height: 1;
 }
+/* 牌面贴图：保持贴图比例，居中且不变形，适配任意尺寸 */
+.tile .face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 4%; box-sizing: border-box; pointer-events: none; -webkit-user-select: none; user-select: none; }
 .tile .rank { font-size: calc(var(--th, 56px) * 0.5); font-weight: 800; }
 .tile .suit { font-size: calc(var(--th, 56px) * 0.26); margin-top: 1px; }
 .tile .word { font-size: calc(var(--th, 56px) * 0.5); font-weight: 800; }

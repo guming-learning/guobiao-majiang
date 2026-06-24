@@ -20,12 +20,12 @@
     if (opts.back) { el.classList.add('back'); return el; }
     const info = tileInfo(id);
     el.classList.add(info.cls);
-    if (info.word !== undefined) {
-      const w = document.createElement('span'); w.className = 'word'; w.textContent = info.word; el.appendChild(w);
-    } else {
-      const r = document.createElement('span'); r.className = 'rank'; r.textContent = info.rank; el.appendChild(r);
-      const s = document.createElement('span'); s.className = 'suit'; s.textContent = info.suit; el.appendChild(s);
-    }
+    const img = document.createElement('img');
+    img.className = 'face';
+    img.src = 'tiles/' + id + '.png';
+    img.alt = tileText(id);
+    img.draggable = false;
+    el.appendChild(img);
     if (opts.cls) el.classList.add(...[].concat(opts.cls));
     if (opts.onClick) { el.classList.add('selectable'); el.addEventListener('click', opts.onClick); }
     return el;
