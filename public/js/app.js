@@ -11,6 +11,7 @@
   let lastGame = null;   // gameState (per-seat view)
   let inRoom = false;
   let amSpectator = false;
+  let resultHidden = false; // 结算面板是否被收起（露出牌桌看牌）
 
   const $ = (id) => document.getElementById(id);
   const screens = { login: $('login-screen'), lobby: $('lobby-screen'), table: $('table-screen') };
@@ -97,6 +98,7 @@
   socket.on('gameState', (view) => {
     amSpectator = !!view.spectator;
     lastGame = view; inRoom = true; showScreen('table');
+    if (view.phase !== 'ended') resultHidden = false; // 新一局重置收起状态
     renderBoard(view); renderTopbar(); updateOverlays();
     // 音效：轮到你 / 本局结束
     if (window.SFX) {
@@ -150,10 +152,25 @@
     const ended = lastGame && lastGame.phase === 'ended';
     const showWait = !playing && !ended && !amSpectator; // 观战者不显示准备浮层
     $('wait-overlay').classList.toggle('active', showWait);
-    $('result-overlay').classList.toggle('active', !!ended);
+    $('result-overlay').classList.toggle('active', !!ended && !resultHidden);
+    $('float-next').classList.toggle('show', !!ended && resultHidden && !amSpectator);
     if (showWait) renderWait();
-    if (ended) renderResult(lastGame);
+    if (ended && !resultHidden) renderResult(lastGame);
+    if (ended && resultHidden) updateFloatNext();
   }
+
+  function updateFloatNext() {
+    const seat = mySeat();
+    const myReady = lastRoom && seat >= 0 && lastRoom.seats[seat] ? lastRoom.seats[seat].ready : false;
+    const b = $('float-next');
+    b.textContent = myReady ? '等待其他玩家…' : '继续下一局';
+    b.disabled = myReady;
+  }
+  // 点击结算面板外的空白处 -> 收起，露出牌桌看全部手牌
+  $('result-overlay').addEventListener('click', (e) => {
+    if (e.target === $('result-overlay')) { resultHidden = true; updateOverlays(); }
+  });
+  $('float-next').addEventListener('click', () => { socket.emit('ready', { ready: true }); });
 
   function renderWait() {
     const box = $('wait-seats'); box.innerHTML = '';
@@ -232,6 +249,12 @@
     for (let i = 0; i < n; i++) c.appendChild(MJ.tileEl(0, { back: true }));
     return c;
   }
+  // 结束后亮出的别家手牌（正面，小尺寸）
+  function openHandEl(tiles) {
+    const c = document.createElement('div'); c.className = 'hand-row open';
+    tiles.slice().sort((a, b) => a - b).forEach((t) => c.appendChild(MJ.tileEl(t)));
+    return c;
+  }
   function myHandEl(p, view) {
     const c = document.createElement('div'); c.className = 'my-hand';
     const canDiscard = view.actions && view.actions.type === 'acting' && view.actions.discard;
@@ -278,11 +301,11 @@
       frag.appendChild(infoRowEl(p));                   // 名字+副露（手牌下方）
     } else if (pos === 'top') {
       frag.appendChild(infoRowEl(p));                   // 名字+副露
-      frag.appendChild(backsEl(p.handCount));
+      frag.appendChild(p.hand ? openHandEl(p.hand) : backsEl(p.handCount)); // 结束后亮牌
       frag.appendChild(riverEl(p, view));
     } else {
       frag.appendChild(infoRowEl(p));                   // 名字+副露
-      frag.appendChild(backsEl(p.handCount));
+      frag.appendChild(p.hand ? openHandEl(p.hand) : backsEl(p.handCount)); // 结束后亮牌
       frag.appendChild(riverEl(p, view));
     }
     area.appendChild(frag);
@@ -366,32 +389,8 @@
       });
       card.appendChild(row);
     }
-    // 本局所有玩家手牌（结束后展示）
-    if (view.players.some((p) => p.hand)) {
-      const hands = document.createElement('div'); hands.className = 'result-hands';
-      const ht = document.createElement('div'); ht.className = 'rh-title'; ht.textContent = '本局手牌';
-      hands.appendChild(ht);
-      view.players.slice().sort((a, b) => a.seat - b.seat).forEach((p) => {
-        const row = document.createElement('div'); row.className = 'rh-row';
-        const isWin = r.winners && r.winners.some((w) => w.seat === p.seat);
-        const nm = document.createElement('span'); nm.className = 'rh-name' + (isWin ? ' win' : '');
-        const tags = [];
-        if (p.isDealer) tags.push('庄');
-        if (!amSpectator && p.seat === view.you) tags.push('你');
-        nm.textContent = (isWin ? '🏆' : '') + p.name + (tags.length ? '（' + tags.join('·') + '）' : '');
-        row.appendChild(nm);
-        const tw = document.createElement('div'); tw.className = 'rh-tiles';
-        (p.hand || []).forEach((t) => tw.appendChild(MJ.tileEl(t)));
-        (p.melds || []).forEach((m) => {
-          const md = document.createElement('span'); md.className = 'rh-meld';
-          m.tiles.forEach((t) => md.appendChild(MJ.tileEl(t, { back: !!m.concealed })));
-          tw.appendChild(md);
-        });
-        row.appendChild(tw);
-        hands.appendChild(row);
-      });
-      card.appendChild(hands);
-    }
+    const tip = document.createElement('div'); tip.className = 'overlay-tip'; tip.textContent = '点击面板外空白处查看全部牌面';
+    card.appendChild(tip);
     if (amSpectator) {
       const note = document.createElement('div'); note.style.marginTop = '8px'; note.style.color = '#9fc1a0'; note.textContent = '👁 观战中';
       card.appendChild(note);
