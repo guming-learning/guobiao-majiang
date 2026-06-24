@@ -389,8 +389,6 @@
       });
       card.appendChild(row);
     }
-    const tip = document.createElement('div'); tip.className = 'overlay-tip'; tip.textContent = '点击面板外空白处查看全部牌面';
-    card.appendChild(tip);
     if (amSpectator) {
       const note = document.createElement('div'); note.style.marginTop = '8px'; note.style.color = '#9fc1a0'; note.textContent = '👁 观战中';
       card.appendChild(note);
