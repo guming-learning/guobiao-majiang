@@ -1,0 +1,21 @@
+{
+  "name": "guobiao-majiang",
+  "version": "1.0.0",
+  "description": "网页版国标麻将（无需登录，输入用户名即可参与，手机横屏可玩，8番起胡）",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/fan.test.js && node test/game.test.js",
+    "test:fan": "node test/fan.test.js",
+    "test:game": "node test/game.test.js",
+    "test:e2e": "node test/e2e.test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}

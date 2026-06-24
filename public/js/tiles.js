@@ -1,0 +1,40 @@
+'use strict';
+// 客户端麻将牌渲染（与服务器 tile 编码一致：1-9万,10-18条,19-27饼,28-31东南西北,32-34中发白,35-42花）
+(function () {
+  const ZI = { 28: ['东', 'feng'], 29: ['南', 'feng'], 30: ['西', 'feng'], 31: ['北', 'feng'], 32: ['中', 'zhong'], 33: ['发', 'fa'], 34: ['白', 'bai'] };
+  const HUA = { 35: '梅', 36: '兰', 37: '竹', 38: '菊', 39: '春', 40: '夏', 41: '秋', 42: '冬' };
+
+  function tileInfo(id) {
+    if (id >= 1 && id <= 9) return { rank: id, suit: '万', cls: 'wan' };
+    if (id >= 10 && id <= 18) return { rank: id - 9, suit: '条', cls: 'tiao' };
+    if (id >= 19 && id <= 27) return { rank: id - 18, suit: '饼', cls: 'bing' };
+    if (ZI[id]) return { word: ZI[id][0], cls: ZI[id][1] };
+    if (HUA[id]) return { word: HUA[id], cls: 'hua' };
+    return { word: '?', cls: 'back' };
+  }
+
+  // 生成一张牌的 DOM 元素
+  function tileEl(id, opts = {}) {
+    const el = document.createElement('div');
+    el.className = 'tile';
+    if (opts.back) { el.classList.add('back'); return el; }
+    const info = tileInfo(id);
+    el.classList.add(info.cls);
+    if (info.word !== undefined) {
+      const w = document.createElement('span'); w.className = 'word'; w.textContent = info.word; el.appendChild(w);
+    } else {
+      const r = document.createElement('span'); r.className = 'rank'; r.textContent = info.rank; el.appendChild(r);
+      const s = document.createElement('span'); s.className = 'suit'; s.textContent = info.suit; el.appendChild(s);
+    }
+    if (opts.cls) el.classList.add(...[].concat(opts.cls));
+    if (opts.onClick) { el.classList.add('selectable'); el.addEventListener('click', opts.onClick); }
+    return el;
+  }
+
+  function tileText(id) {
+    const info = tileInfo(id);
+    return info.word !== undefined ? info.word : (info.rank + info.suit);
+  }
+
+  window.MJ = { tileEl, tileText, tileInfo };
+})();
