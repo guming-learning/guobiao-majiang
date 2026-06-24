@@ -396,6 +396,16 @@
   }
   function toast(text) { flash(text); }
 
+  // 牌面大小随屏幕尺寸自动缩放：手机保持 1，PC 等大屏按比例放大（取宽高较小者，避免溢出）
+  function applyTileScale() {
+    const w = window.innerWidth, h = window.innerHeight;
+    const scale = Math.max(1, Math.min(w / 820, h / 400, 2.5));
+    document.documentElement.style.setProperty('--ui-scale', scale.toFixed(3));
+  }
+  window.addEventListener('resize', applyTileScale);
+  window.addEventListener('orientationchange', applyTileScale);
+  applyTileScale();
+
   // 自动登录（已有昵称时）
   if (myName) socket.emit('login', { playerId: myPlayerId, name: myName });
 })();

@@ -11,6 +11,7 @@
   --dots: #d4a017;
   --zi: #2a2a2a;
   --hua: #b5179e;
+  --ui-scale: 1; /* 牌面缩放系数：按屏幕尺寸由 JS 设置，手机=1，PC 大屏更大 */
 }
 html, body {
   height: 100%;
@@ -126,23 +127,23 @@ html, body {
 .tile.just-drawn { margin-left: 10px; box-shadow: 0 0 0 2px #6ad1ff, 0 2px 4px rgba(0,0,0,0.4); }
 
 /* 我的手牌 */
-.my-hand { display: flex; flex-wrap: nowrap; gap: 3px; --tw: clamp(19px, 4vw, 34px); --th: clamp(27px, 5.6vw, 47px); justify-content: center; }
+.my-hand { display: flex; flex-wrap: nowrap; gap: 3px; --tw: calc(clamp(19px, 4vw, 34px) * var(--ui-scale, 1)); --th: clamp(27px, 5.6vw, 47px); justify-content: center; }
 .my-hand .tile.selectable:hover { transform: translateY(-3px); }
 /* 别家手牌（背面） */
-.hand-row { display: flex; gap: 2px; --tw: clamp(10px, 1.7vw, 15px); --th: clamp(14px, 2.5vw, 22px); flex-wrap: wrap; justify-content: center; max-width: 100%; }
+.hand-row { display: flex; gap: 2px; --tw: calc(clamp(10px, 1.7vw, 15px) * var(--ui-scale, 1)); --th: clamp(14px, 2.5vw, 22px); flex-wrap: wrap; justify-content: center; max-width: 100%; }
 
 /* 副露 */
 .melds { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
-.meld { display: flex; gap: 1px; --tw: clamp(13px, 2.4vw, 22px); --th: clamp(18px, 3.6vw, 30px); }
+.meld { display: flex; gap: 1px; --tw: calc(clamp(13px, 2.4vw, 22px) * var(--ui-scale, 1)); --th: clamp(18px, 3.6vw, 30px); }
 
 /* 牌河（每行更多张，降低高度避免上下重合） */
-.river { display: grid; grid-auto-rows: min-content; gap: 2px; --tw: clamp(11px, 1.9vw, 17px); --th: clamp(15px, 2.5vw, 22px); justify-content: center; }
+.river { display: grid; grid-auto-rows: min-content; gap: 2px; --tw: calc(clamp(11px, 1.9vw, 17px) * var(--ui-scale, 1)); --th: clamp(15px, 2.5vw, 22px); justify-content: center; }
 .river.h { grid-template-columns: repeat(14, auto); }
 .seat-left .river.h, .seat-right .river.h { grid-template-columns: repeat(6, auto); }
 .river .tile.last { box-shadow: 0 0 0 2px #ffd84d, 0 2px 3px rgba(0,0,0,0.4); }
 
 /* 花牌 */
-.flowers { display: flex; gap: 1px; --tw: clamp(11px, 1.9vw, 17px); --th: clamp(15px, 2.7vw, 24px); }
+.flowers { display: flex; gap: 1px; --tw: calc(clamp(11px, 1.9vw, 17px) * var(--ui-scale, 1)); --th: clamp(15px, 2.7vw, 24px); }
 
 /* 中央信息 */
 .center .round-info { background: rgba(0,0,0,0.62); padding: 5px 14px; border-radius: 12px; text-align: center; font-size: 13px; position: relative; z-index: 6; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
