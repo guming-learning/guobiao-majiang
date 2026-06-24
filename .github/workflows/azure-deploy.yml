@@ -1,0 +1,33 @@
+name: Deploy to Azure App Service
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'reference/**'
+      - 'tools/**'
+      - 'test/**'
+      - '**/*.md'
+
+# 需要在仓库 Settings 配置：
+#   变量(Variables): AZURE_WEBAPP_NAME = <部署后输出的站点名>
+#   机密(Secrets):  AZURE_WEBAPP_PUBLISH_PROFILE = <从 App Service 下载的发布配置文件 XML>
+# 平台已设 SCM_DO_BUILD_DURING_DEPLOYMENT=true，由 Oryx 在部署时执行 npm install。
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 打包运行所需文件
+        run: |
+          mkdir -p dist
+          cp -r server.js package.json package-lock.json src public dist/
+
+      - name: 部署到 Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: dist

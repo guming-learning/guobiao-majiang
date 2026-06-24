@@ -1,9 +1,12 @@
 # 国标麻将 · 网页版
 
-一个**无需登录**、输入昵称即可游玩的网页版**国标麻将（中国标准麻将 / MCR）**。支持手机**横屏**游玩，**8 番起胡**，4 人真人对战。
+一个**无需登录**、输入昵称即可游玩的网页版**国标麻将（中国标准麻将 / MCR）**。支持手机**横屏**游玩，**8 番起胡**，4 人真人对战（可加 AI 机器人）。
 
-- 算番算法参考 [zheng-fan/GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong)（C++，81 番），完整移植为 JavaScript，并用其 100+ 测试用例验证。
+> 🎮 **在线试玩**：https://guobiao-majiang-qndfyvrqqz5c6.azurewebsites.net （Azure App Service，手机横屏即可玩）
+
+- 算法参考 [zheng-fan/GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong)（C++，81 番），完整移植为 JavaScript，并用其 100+ 测试用例验证。
 - 房间 / WebSocket / 服务器权威 架构参考 [whg333/majiang-1](https://github.com/whg333/majiang-1)。
+- 一键部署到 Azure：见 [`infra/`](infra/README.md)（Bicep + 部署脚本 + GitHub Actions）。
 
 ## 特性
 
