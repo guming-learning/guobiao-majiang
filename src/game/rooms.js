@@ -7,6 +7,7 @@ const AI = require('./ai');
 const CLAIM_TIMEOUT = 15000;  // 认领超时（自动过）
 const ACT_TIMEOUT = 30000;    // 出牌超时（自动打出）
 const NEXT_TIMEOUT = 15000;   // 局间续局超时（自动开下一局）
+const BOT_WATCHDOG = 3000;    // 机器人硬超时(3秒)：超时未出牌/认领则强制安全处理，防止卡住
 let botSeq = 1;
 // 机器人思考延迟（BOT_FAST=1 时极快，便于测试）
 function botDelay() { return process.env.BOT_FAST ? 10 + Math.random() * 20 : 700 + Math.random() * 600; }
@@ -23,13 +24,14 @@ class Room {
     this.scores = [0, 0, 0, 0];
     this.dealer = 0;
     this.quanfeng = T.TILE_E;
-    this.turnTime = 20000; // 出牌等待(毫秒)，可在建房时设置
+    this.turnTime = 60000; // 出牌等待(毫秒)，可在建房时设置，默认 60 秒
     this.minFan = 8;       // 起胡番数，可在建房时设置(8/16/32)
     this.game = null;
     this.handNo = 0;
     this.timer = null;
     this.timerKind = null;
     this.botTimer = null;
+    this.botWatchdog = null;
   }
 
   isBot(seat) { const pid = this.seats[seat]; const p = pid && this.manager.players.get(pid); return !!(p && p.isBot); }
@@ -214,15 +216,22 @@ class Room {
   }
   scheduleBots() {
     if (this.botTimer) { clearTimeout(this.botTimer); this.botTimer = null; }
+    if (this.botWatchdog) { clearTimeout(this.botWatchdog); this.botWatchdog = null; }
     if (!this.game) return;
     const phase = this.game.phase;
     if (phase === 'acting') {
       const seat = this.game.current;
-      if (this.isBot(seat)) this.botTimer = setTimeout(() => { this.botTimer = null; this._botAct(seat); }, botDelay());
+      if (this.isBot(seat)) {
+        this.botTimer = setTimeout(() => { this.botTimer = null; this._botAct(seat); }, botDelay());
+        this.botWatchdog = setTimeout(() => { this.botWatchdog = null; this._botWatchdog('acting', seat); }, BOT_WATCHDOG);
+      }
     } else if (phase === 'claiming') {
       const opts = this.game.claim.options;
       const pending = Object.keys(opts).some((s) => this.isBot(parseInt(s, 10)) && !this.game.claim.responses[s]);
-      if (pending) this.botTimer = setTimeout(() => { this.botTimer = null; this._botClaims(); }, botDelay());
+      if (pending) {
+        this.botTimer = setTimeout(() => { this.botTimer = null; this._botClaims(); }, botDelay());
+        this.botWatchdog = setTimeout(() => { this.botWatchdog = null; this._botWatchdog('claiming'); }, BOT_WATCHDOG);
+      }
     } else if (phase === 'ended') {
       let changed = false;
       for (let s = 0; s < 4; s++) if (this.isBot(s) && this.seats[s] && !this.ready[s]) { this.ready[s] = true; changed = true; }
@@ -231,7 +240,10 @@ class Room {
   }
   _botAct(seat) {
     if (!this.game || this.game.phase !== 'acting' || this.game.current !== seat || !this.isBot(seat)) return;
-    try { this.game.act(seat, AI.decideActing(this.game, seat, this.game.getActions(seat))); } catch (e) {}
+    let r = null;
+    try { r = this.game.act(seat, AI.decideActing(this.game, seat, this.game.getActions(seat))); }
+    catch (e) { r = { error: String(e) }; }
+    if (r && r.error) this.autoDiscard(); // AI 决策异常/被拒，回退安全出牌，避免卡住
     this.afterChange();
   }
   _botClaims() {
@@ -241,14 +253,40 @@ class Room {
       if (this.game.phase !== 'claiming') break;
       const seat = parseInt(s, 10);
       if (!this.isBot(seat) || this.game.claim.responses[s]) continue;
-      try { this.game.act(seat, AI.decideClaim(this.game, seat, opts[s])); } catch (e) {}
+      let r = null;
+      try { r = this.game.act(seat, AI.decideClaim(this.game, seat, opts[s])); }
+      catch (e) { r = { error: String(e) }; }
+      if (r && r.error) { try { this.game.act(seat, { type: 'pass' }); } catch (e) {} } // 回退为“过”
     }
     this.afterChange();
+  }
+  // 机器人 3 秒硬超时：仍未出牌/认领则强制安全处理（不影响真人的认领时间）
+  _botWatchdog(kind, seat) {
+    if (!this.game) return;
+    if (kind === 'acting') {
+      if (this.game.phase === 'acting' && this.game.current === seat && this.isBot(seat)) {
+        this.autoDiscard();
+        this.afterChange();
+      }
+    } else if (kind === 'claiming') {
+      if (this.game.phase === 'claiming') {
+        const opts = this.game.claim.options;
+        let acted = false;
+        for (const s of Object.keys(opts)) {
+          if (this.game.phase !== 'claiming') break;
+          if (this.isBot(parseInt(s, 10)) && !this.game.claim.responses[s]) {
+            try { this.game.act(parseInt(s, 10), { type: 'pass' }); acted = true; } catch (e) {}
+          }
+        }
+        if (acted) this.afterChange();
+      }
+    }
   }
 
   destroy() {
     this.clearTimer();
     if (this.botTimer) { clearTimeout(this.botTimer); this.botTimer = null; }
+    if (this.botWatchdog) { clearTimeout(this.botWatchdog); this.botWatchdog = null; }
     for (let s = 0; s < 4; s++) if (this.isBot(s)) this.manager.players.delete(this.seats[s]);
     this.seats = [null, null, null, null];
   }
@@ -325,7 +363,7 @@ class RoomManager {
     const room = new Room(this);
     room.owner = playerId;
     const tt = parseInt(opts && opts.turnTime, 10);
-    if ([0, 10, 20, 60].includes(tt)) room.turnTime = tt * 1000; // 0 = 无限制
+    if ([0, 20, 60].includes(tt)) room.turnTime = tt * 1000; // 0 = 无限制
     const mf = parseInt(opts && opts.minFan, 10);
     if ([8, 16, 32].includes(mf)) room.minFan = mf;
     this.rooms.set(room.id, room);
