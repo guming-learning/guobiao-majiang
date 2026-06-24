@@ -264,7 +264,8 @@ class Room {
       this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; try { this.game.forceResolveClaims(); } catch (e) {} this.afterChange(); }, CLAIM_TIMEOUT);
     } else if (phase === 'acting') {
       this.timerKind = 'acting';
-      this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; this.autoDiscard(); this.afterChange(); }, this.turnTime);
+      if (this.turnTime > 0) this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; this.autoDiscard(); this.afterChange(); }, this.turnTime);
+      // turnTime === 0：无限制，不设出牌超时
     } else if (phase === 'ended') {
       this.timerKind = 'ended';
       this.timer = setTimeout(() => { this.timer = null; this.timerKind = null; if (this.isFull()) this.nextHand(); }, NEXT_TIMEOUT);
@@ -324,7 +325,7 @@ class RoomManager {
     const room = new Room(this);
     room.owner = playerId;
     const tt = parseInt(opts && opts.turnTime, 10);
-    if ([10, 15, 20, 30, 60].includes(tt)) room.turnTime = tt * 1000;
+    if ([0, 10, 20, 60].includes(tt)) room.turnTime = tt * 1000; // 0 = 无限制
     const mf = parseInt(opts && opts.minFan, 10);
     if ([8, 16, 32].includes(mf)) room.minFan = mf;
     this.rooms.set(room.id, room);

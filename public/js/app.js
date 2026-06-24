@@ -150,9 +150,10 @@
     const box = $('wait-seats'); box.innerHTML = '';
     const seats = lastRoom ? lastRoom.seats : [];
     if (lastRoom) {
-      const secs = Math.round((lastRoom.turnTime || 20000) / 1000);
+      const tt = (lastRoom.turnTime == null) ? 20000 : lastRoom.turnTime;
+      const timeText = tt === 0 ? '出牌不限时' : `出牌 ${Math.round(tt / 1000)} 秒`;
       const h3 = document.querySelector('#wait-overlay h3');
-      if (h3) h3.textContent = `等待开局 · 出牌 ${secs} 秒 · ${lastRoom.minFan || 8} 番起`;
+      if (h3) h3.textContent = `等待开局 · ${timeText} · ${lastRoom.minFan || 8} 番起`;
     }
     for (let i = 0; i < 4; i++) {
       const s = seats[i] || {};
