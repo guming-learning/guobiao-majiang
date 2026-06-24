@@ -366,6 +366,32 @@
       });
       card.appendChild(row);
     }
+    // 本局所有玩家手牌（结束后展示）
+    if (view.players.some((p) => p.hand)) {
+      const hands = document.createElement('div'); hands.className = 'result-hands';
+      const ht = document.createElement('div'); ht.className = 'rh-title'; ht.textContent = '本局手牌';
+      hands.appendChild(ht);
+      view.players.slice().sort((a, b) => a.seat - b.seat).forEach((p) => {
+        const row = document.createElement('div'); row.className = 'rh-row';
+        const isWin = r.winners && r.winners.some((w) => w.seat === p.seat);
+        const nm = document.createElement('span'); nm.className = 'rh-name' + (isWin ? ' win' : '');
+        const tags = [];
+        if (p.isDealer) tags.push('庄');
+        if (!amSpectator && p.seat === view.you) tags.push('你');
+        nm.textContent = (isWin ? '🏆' : '') + p.name + (tags.length ? '（' + tags.join('·') + '）' : '');
+        row.appendChild(nm);
+        const tw = document.createElement('div'); tw.className = 'rh-tiles';
+        (p.hand || []).forEach((t) => tw.appendChild(MJ.tileEl(t)));
+        (p.melds || []).forEach((m) => {
+          const md = document.createElement('span'); md.className = 'rh-meld';
+          m.tiles.forEach((t) => md.appendChild(MJ.tileEl(t, { back: !!m.concealed })));
+          tw.appendChild(md);
+        });
+        row.appendChild(tw);
+        hands.appendChild(row);
+      });
+      card.appendChild(hands);
+    }
     if (amSpectator) {
       const note = document.createElement('div'); note.style.marginTop = '8px'; note.style.color = '#9fc1a0'; note.textContent = '👁 观战中';
       card.appendChild(note);

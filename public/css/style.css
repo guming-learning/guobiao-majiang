@@ -169,6 +169,14 @@ html, body {
 .overlay-card { width: min(92%, 560px); max-height: 92%; overflow-y: auto; background: #123a26; border: 1px solid rgba(232,200,122,0.5); border-radius: 16px; padding: 20px; text-align: center; }
 .overlay-card h3 { color: var(--gold); margin-bottom: 14px; }
 .overlay-tip { margin-top: 12px; font-size: 12px; color: #9fc1a0; }
+/* 结算：本局所有玩家手牌 */
+.result-hands { margin-top: 10px; border-top: 1px solid rgba(232,200,122,0.25); padding-top: 8px; text-align: left; max-height: 42vh; overflow-y: auto; }
+.rh-title { color: var(--gold); font-size: 13px; margin-bottom: 8px; text-align: center; }
+.rh-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.rh-name { flex: 0 0 76px; font-size: 12px; color: #cfe6cf; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rh-name.win { color: #ffe08a; font-weight: 700; }
+.rh-tiles { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; --tw: clamp(14px, 2.6vw, 24px); }
+.rh-meld { display: inline-flex; gap: 1px; margin-left: 5px; }
 .wait-seats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
 .wait-btns { display: flex; gap: 10px; justify-content: center; }
 .bot-remove { margin-top: 6px; background: #6b2f2f; padding: 4px 10px; font-size: 12px; }
