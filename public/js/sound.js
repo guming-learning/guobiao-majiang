@@ -3,10 +3,37 @@
 (function () {
   let ctx = null;
   let enabled = localStorage.getItem('mj_sound') !== '0';
+  const tts = ('speechSynthesis' in window) ? window.speechSynthesis : null;
+  let zhVoice = null;
+  function pickVoice() {
+    if (!tts) return;
+    const vs = tts.getVoices() || [];
+    zhVoice = vs.find((v) => /zh[-_]?cn/i.test(v.lang)) || vs.find((v) => /^zh/i.test(v.lang)) ||
+              vs.find((v) => /chinese|普通话|中文/i.test(v.name)) || null;
+  }
+  if (tts) { pickVoice(); tts.onvoiceschanged = pickVoice; }
 
+  let warmed = false;
   function init() {
     if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ctx = null; } }
     if (ctx && ctx.state === 'suspended') ctx.resume();
+    if (tts) {
+      if (!zhVoice) pickVoice();
+      if (!warmed) { try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; tts.speak(u); warmed = true; } catch (e) {} }
+    }
+  }
+
+  // 中文语音播报（吃/碰/杠/胡/补花、报牌名）
+  function say(text, interrupt) {
+    if (!enabled || !text || !tts) return;
+    try {
+      if (interrupt) tts.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'zh-CN';
+      if (zhVoice) u.voice = zhVoice;
+      u.rate = 1.05; u.pitch = 1; u.volume = 1;
+      tts.speak(u);
+    } catch (e) {}
   }
 
   function tone(freq, start, dur, type, gain) {
@@ -36,9 +63,9 @@
   }
 
   const SFX = {
-    init,
+    init, say,
     isEnabled() { return enabled; },
-    setEnabled(v) { enabled = !!v; localStorage.setItem('mj_sound', v ? '1' : '0'); if (v) init(); },
+    setEnabled(v) { enabled = !!v; localStorage.setItem('mj_sound', v ? '1' : '0'); if (v) init(); else if (tts) try { tts.cancel(); } catch (e) {} },
     discard() { if (!enabled) return; init(); clack(0, 1050, 0.34); },
     draw() { if (!enabled) return; init(); clack(0, 1500, 0.16); },
     claim() { if (!enabled) return; init(); clack(0, 1300, 0.34); clack(0.085, 1550, 0.3); },

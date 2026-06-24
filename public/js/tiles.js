@@ -36,5 +36,18 @@
     return info.word !== undefined ? info.word : (info.rank + info.suit);
   }
 
-  window.MJ = { tileEl, tileText, tileInfo };
+  // 中文语音读法（用于报牌）
+  const NUMC = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  const ZI_SPEAK = { 28: '东风', 29: '南风', 30: '西风', 31: '北风', 32: '红中', 33: '发财', 34: '白板' };
+  const HUA_SPEAK = { 35: '梅', 36: '兰', 37: '竹', 38: '菊', 39: '春', 40: '夏', 41: '秋', 42: '冬' };
+  function tileSpeak(id) {
+    if (id >= 1 && id <= 9) return NUMC[id] + '万';
+    if (id >= 10 && id <= 18) return NUMC[id - 9] + '条';
+    if (id >= 19 && id <= 27) return NUMC[id - 18] + '饼';
+    if (ZI_SPEAK[id]) return ZI_SPEAK[id];
+    if (HUA_SPEAK[id]) return HUA_SPEAK[id];
+    return '';
+  }
+
+  window.MJ = { tileEl, tileText, tileInfo, tileSpeak };
 })();
