@@ -304,6 +304,12 @@
     $('advice-btn').classList.add('off');
     if (lastGame && !amSpectator) renderBoard(lastGame);
   }
+  function showAdvice() {
+    adviceHidden = false;
+    localStorage.setItem('mj_advice_hidden', '0');
+    $('advice-btn').classList.remove('off');
+    if (lastGame && !amSpectator) renderBoard(lastGame);
+  }
   function adviceEl(list) {
     const box = document.createElement('div'); box.className = 'advice';
     list.forEach((it) => {
@@ -325,8 +331,14 @@
   function infoRowEl(p) {
     const row = document.createElement('div');
     row.className = 'info-row';
-    if (!amSpectator && lastGame && p.seat === lastGame.you && !adviceHidden && lastAdvice && lastAdvice.length) {
-      row.appendChild(adviceEl(lastAdvice)); // 番型提示放在名字左侧
+    if (!amSpectator && lastGame && p.seat === lastGame.you) {
+      if (adviceHidden) {
+        const b = document.createElement('button'); b.className = 'advice-show'; b.textContent = '显示提示';
+        b.addEventListener('click', showAdvice);
+        row.appendChild(b); // 隐藏后在名字左侧给出“显示提示”按钮
+      } else if (lastAdvice && lastAdvice.length) {
+        row.appendChild(adviceEl(lastAdvice)); // 番型提示放在名字左侧
+      }
     }
     row.appendChild(pinfoEl(p));
     if (p.melds.length) row.appendChild(meldsEl(p.melds)); // 副露放在名字右侧
