@@ -213,7 +213,6 @@ html, body {
 .advice-hide:active { background: rgba(255,255,255,0.22); }
 .advice-show { padding: 3px 10px; font-size: 11px; color: #ffe0a0; background: rgba(0,0,0,0.42); border: 1px solid rgba(232,200,122,0.4); border-radius: 8px; cursor: pointer; }
 .advice-show:active { background: rgba(255,255,255,0.18); }
-.advice-btn.off { opacity: 0.45; }
 .seat-bottom .info-row { margin-top: 3px; margin-bottom: 2px; }
 
 /* 创建房间配置弹窗 */

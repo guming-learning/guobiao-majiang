@@ -89,14 +89,6 @@
     $('sound-btn').textContent = on ? '🔊' : '🔇';
   });
   if (window.SFX) $('sound-btn').textContent = SFX.isEnabled() ? '🔊' : '🔇';
-  // 番型提示开关
-  $('advice-btn').addEventListener('click', () => {
-    adviceHidden = !adviceHidden;
-    localStorage.setItem('mj_advice_hidden', adviceHidden ? '1' : '0');
-    $('advice-btn').classList.toggle('off', adviceHidden);
-    if (lastGame && !amSpectator) renderBoard(lastGame);
-  });
-  $('advice-btn').classList.toggle('off', adviceHidden);
   socket.on('advice', (d) => {
     if (!lastGame || amSpectator || !d || d.seat !== lastGame.you) return;
     lastAdvice = d.list || [];
@@ -301,13 +293,11 @@
   function hideAdvice() {
     adviceHidden = true;
     localStorage.setItem('mj_advice_hidden', '1');
-    $('advice-btn').classList.add('off');
     if (lastGame && !amSpectator) renderBoard(lastGame);
   }
   function showAdvice() {
     adviceHidden = false;
     localStorage.setItem('mj_advice_hidden', '0');
-    $('advice-btn').classList.remove('off');
     if (lastGame && !amSpectator) renderBoard(lastGame);
   }
   function adviceEl(list) {
