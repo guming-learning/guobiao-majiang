@@ -203,6 +203,13 @@ html, body {
 
 /* 名字 + 副露 同一行（副露在名字右侧） */
 .info-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+/* 番型提示（放在我的名字左侧，字号与牌面都很小） */
+.advice { display: flex; flex-direction: column; gap: 1px; background: rgba(0,0,0,0.42); border: 1px solid rgba(232,200,122,0.28); border-radius: 8px; padding: 2px 6px; font-size: 10px; line-height: 1.2; max-width: 46vw; }
+.advice-row { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.advice-lab { color: #ffe08a; }
+.advice-tiles { display: inline-flex; gap: 1px; --tw: clamp(9px, 1.5vw, 13px); }
+.advice-more { color: #9fc1a0; font-size: 9px; }
+.advice-btn.off { opacity: 0.45; }
 .seat-bottom .info-row { margin-top: 3px; margin-bottom: 2px; }
 
 /* 创建房间配置弹窗 */

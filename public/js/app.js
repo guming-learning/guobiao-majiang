@@ -12,6 +12,9 @@
   let inRoom = false;
   let amSpectator = false;
   let resultHidden = false; // 结算面板是否被收起（露出牌桌看牌）
+  let lastAdvice = null;    // 番型提示列表
+  let lastAdviceSig = null; // 对应的手牌签名（手牌变化时作废，避免显示旧提示）
+  let adviceHidden = localStorage.getItem('mj_advice_hidden') === '1';
 
   const $ = (id) => document.getElementById(id);
   const screens = { login: $('login-screen'), lobby: $('lobby-screen'), table: $('table-screen') };
@@ -87,6 +90,20 @@
     $('sound-btn').textContent = on ? '🔊' : '🔇';
   });
   if (window.SFX) $('sound-btn').textContent = SFX.isEnabled() ? '🔊' : '🔇';
+  // 番型提示开关
+  $('advice-btn').addEventListener('click', () => {
+    adviceHidden = !adviceHidden;
+    localStorage.setItem('mj_advice_hidden', adviceHidden ? '1' : '0');
+    $('advice-btn').classList.toggle('off', adviceHidden);
+    if (lastGame && !amSpectator) renderBoard(lastGame);
+  });
+  $('advice-btn').classList.toggle('off', adviceHidden);
+  socket.on('advice', (d) => {
+    if (!lastGame || amSpectator || !d || d.seat !== lastGame.you) return;
+    lastAdvice = d.list || [];
+    lastAdviceSig = myHandSig(lastGame);
+    if (!adviceHidden) renderBoard(lastGame);
+  });
 
   let prevMyTurn = false, prevPhase = null;
   socket.on('spectating', () => { amSpectator = true; inRoom = true; lastGame = null; lastRoom = null; showScreen('table'); renderTopbar(); updateOverlays(); });
@@ -99,6 +116,7 @@
     amSpectator = !!view.spectator;
     lastGame = view; inRoom = true; showScreen('table');
     if (view.phase !== 'ended') resultHidden = false; // 新一局重置收起状态
+    if (myHandSig(view) !== lastAdviceSig) lastAdvice = null; // 手牌变化，旧提示作废
     renderBoard(view); renderTopbar(); updateOverlays();
     // 音效：轮到你 / 本局结束
     if (window.SFX) {
@@ -117,8 +135,8 @@
       prevPhase = view.phase;
     }
   });
-  socket.on('leftRoom', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); });
-  socket.on('roomClosed', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; showScreen('lobby'); socket.emit('listRooms'); toast('房间已关闭'); });
+  socket.on('leftRoom', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; lastAdviceSig = null; showScreen('lobby'); socket.emit('listRooms'); });
+  socket.on('roomClosed', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; lastAdviceSig = null; showScreen('lobby'); socket.emit('listRooms'); toast('房间已关闭'); });
 
   function mySeat() {
     if (lastGame) return lastGame.you;
@@ -282,9 +300,32 @@
     return info;
   }
 
+  function myHandSig(view) {
+    if (!view || !view.players || view.you == null) return '';
+    const me = view.players.find((p) => p.seat === view.you);
+    return me && me.hand ? me.hand.join(',') : '';
+  }
+  function adviceEl(list) {
+    const box = document.createElement('div'); box.className = 'advice';
+    list.forEach((it) => {
+      const row = document.createElement('div'); row.className = 'advice-row';
+      const lab = document.createElement('span'); lab.className = 'advice-lab';
+      lab.textContent = `${it.name} ${it.score}番·差${it.dist}`;
+      row.appendChild(lab);
+      const tw = document.createElement('span'); tw.className = 'advice-tiles';
+      (it.tiles || []).slice(0, 8).forEach((t) => tw.appendChild(MJ.tileEl(t)));
+      if ((it.tiles || []).length > 8) { const m = document.createElement('span'); m.className = 'advice-more'; m.textContent = '+' + (it.tiles.length - 8); tw.appendChild(m); }
+      row.appendChild(tw);
+      box.appendChild(row);
+    });
+    return box;
+  }
   function infoRowEl(p) {
     const row = document.createElement('div');
     row.className = 'info-row';
+    if (!amSpectator && lastGame && p.seat === lastGame.you && !adviceHidden && lastAdvice && lastAdvice.length) {
+      row.appendChild(adviceEl(lastAdvice)); // 番型提示放在名字左侧
+    }
     row.appendChild(pinfoEl(p));
     if (p.melds.length) row.appendChild(meldsEl(p.melds)); // 副露放在名字右侧
     return row;

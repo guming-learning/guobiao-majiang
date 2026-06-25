@@ -3,6 +3,7 @@
 const { Game } = require('./Game');
 const T = require('./../mahjong/tile');
 const AI = require('./ai');
+const { analyzeHand } = require('./advisor');
 
 const CLAIM_TIMEOUT = 15000;  // 认领超时（自动过）
 const ACT_TIMEOUT = 30000;    // 出牌超时（自动打出）
@@ -32,6 +33,7 @@ class Room {
     this.botTimer = null;
     this.botWatchdog = null;
     this.spectators = []; // 观战者 playerId 列表（不占座位）
+    this._advEmitSig = [null, null, null, null]; // 番型提示：按手牌签名去重，只在变化时推送
   }
 
   isSpectator(playerId) { return this.spectators.includes(playerId); }
@@ -137,6 +139,30 @@ class Room {
       const sv = this.game.getSpectatorView(this.dealer);
       for (const pid of this.spectators) this.emitToPlayer(pid, 'gameState', sv);
     }
+    this._sendAdvice();
+  }
+
+  // 番型提示：异步为每个真人玩家计算“最近的 >=6 番番型与所缺进张”，仅在手牌变化时推送（不阻塞牌桌）
+  _sendAdvice() {
+    if (!this.game || this.game.phase === 'ended' || this.game.phase === 'init') return;
+    const game = this.game;
+    setImmediate(() => {
+      if (this.game !== game) return; // 已进入下一局
+      for (let s = 0; s < 4; s++) {
+        const pid = this.seats[s];
+        if (!pid || this.isBot(s)) continue;
+        const sid = this.manager.socketIdOf(pid);
+        if (!sid) continue;
+        const p = game.players[s];
+        if (!p || !p.hand) continue;
+        const sig = p.hand.join(',') + '#' + (p.melds || []).map((m) => m.type + (m.tiles || []).join('')).join(';');
+        if (this._advEmitSig[s] === sig) continue;
+        this._advEmitSig[s] = sig;
+        let list = [];
+        try { list = analyzeHand({ hand: p.hand, melds: p.melds || [], quanfeng: game.quanfeng, menfeng: p.menfeng }, 3); } catch (e) { list = []; }
+        this.manager.io.to(sid).emit('advice', { seat: s, list });
+      }
+    });
   }
 
   onGameEvent(e) { this.emitAll('event', e); }
@@ -151,6 +177,7 @@ class Room {
 
   startHand() {
     this.ready = [false, false, false, false];
+    this._advEmitSig = [null, null, null, null];
     this.handNo++;
     this.game = new Game({
       names: [0, 1, 2, 3].map((s) => this.playerName(s) || `玩家${s + 1}`),
