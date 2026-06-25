@@ -209,6 +209,8 @@ html, body {
 .advice-lab { color: #ffe08a; }
 .advice-tiles { display: inline-flex; gap: 1px; --tw: clamp(9px, 1.5vw, 13px); }
 .advice-more { color: #9fc1a0; font-size: 9px; }
+.advice-hide { align-self: flex-start; margin-top: 2px; padding: 1px 7px; font-size: 9px; color: #ffe0a0; background: rgba(255,255,255,0.12); border: 1px solid rgba(232,200,122,0.35); border-radius: 6px; cursor: pointer; }
+.advice-hide:active { background: rgba(255,255,255,0.22); }
 .advice-btn.off { opacity: 0.45; }
 .seat-bottom .info-row { margin-top: 3px; margin-bottom: 2px; }
 
