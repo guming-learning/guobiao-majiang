@@ -276,16 +276,16 @@ class Game {
   }
 
   _skillDraw2(seat) {
-    let last = null;
+    let last = null, drawn = 0;
     for (let k = 0; k < 2; k++) {
       const res = this._draw(seat, true); // 从牌尾摸，自动补花
       if (res.drained) break;
-      last = res.tile;
+      last = res.tile; drawn++;
     }
     this.players[seat].hand.sort((a, b) => a - b);
     if (last != null) this.lastDraw = { seat, tile: last };
-    this._extraDiscards = 2;
-    this._logMsg(`${this._name(seat)} 多摸两张`);
+    this._extraDiscards = drawn; // 实际多摸几张就多弃几张（接近牌墙尾时可能不足 2，保证手牌数一致）
+    this._logMsg(`${this._name(seat)} 多摸${drawn}张`);
     return { ok: true };
   }
 
