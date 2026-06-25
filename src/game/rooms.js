@@ -3,7 +3,7 @@
 const { Game } = require('./Game');
 const T = require('./../mahjong/tile');
 const AI = require('./ai');
-const { analyzeHand } = require('./advisor');
+const { analyzeHand, filterByRemaining } = require('./advisor');
 
 const CLAIM_TIMEOUT = 15000;  // 认领超时（自动过）
 const ACT_TIMEOUT = 30000;    // 出牌超时（自动打出）
@@ -33,7 +33,9 @@ class Room {
     this.botTimer = null;
     this.botWatchdog = null;
     this.spectators = []; // 观战者 playerId 列表（不占座位）
-    this._advEmitSig = [null, null, null, null]; // 番型提示：按手牌签名去重，只在变化时推送
+    this._advEmitSig = [null, null, null, null]; // 已推送的展示签名（过滤后），变化才推
+    this._advHandSig = [null, null, null, null]; // 上次枚举对应的手牌签名（手牌变才重算枚举）
+    this._advCand = [[], [], [], []];            // 缓存的备选番型（枚举结果，未按余张过滤）
   }
 
   isSpectator(playerId) { return this.spectators.includes(playerId); }
@@ -142,12 +144,20 @@ class Room {
     this._sendAdvice();
   }
 
-  // 番型提示：异步为每个真人玩家计算“最近的 >=6 番番型与所缺进张”，仅在手牌变化时推送（不阻塞牌桌）
+  // 番型提示：每次牌桌变化（含他人/机器人操作）都重算并按需推送。
+  // 重活（枚举番型）只在自己手牌变化时做，结果缓存；轻活（按场上余张过滤进张）每次都做，
+  // 因此别人打牌使某进张绝张时，提示会随之更新。整体异步，不阻塞牌桌。
   _sendAdvice() {
     if (!this.game || this.game.phase === 'ended' || this.game.phase === 'init') return;
     const game = this.game;
     setImmediate(() => {
       if (this.game !== game) return; // 已进入下一局
+      const seen = new Array(35).fill(0); // 场上已现张数（各家副露 + 各家牌河）
+      for (let s = 0; s < 4; s++) {
+        const p = game.players[s]; if (!p) continue;
+        for (const m of (p.melds || [])) for (const t of (m.tiles || [])) if (t >= 1 && t <= 34) seen[t]++;
+        for (const t of (p.river || [])) if (t >= 1 && t <= 34) seen[t]++;
+      }
       for (let s = 0; s < 4; s++) {
         const pid = this.seats[s];
         if (!pid || this.isBot(s)) continue;
@@ -155,11 +165,20 @@ class Room {
         if (!sid) continue;
         const p = game.players[s];
         if (!p || !p.hand) continue;
-        const sig = p.hand.join(',') + '#' + (p.melds || []).map((m) => m.type + (m.tiles || []).join('')).join(';');
-        if (this._advEmitSig[s] === sig) continue;
-        this._advEmitSig[s] = sig;
-        let list = [];
-        try { list = analyzeHand({ hand: p.hand, melds: p.melds || [], quanfeng: game.quanfeng, menfeng: p.menfeng }, 3); } catch (e) { list = []; }
+        const handSig = p.hand.join(',') + '#' + (p.melds || []).map((m) => m.type + (m.tiles || []).join('')).join(';');
+        if (this._advHandSig[s] !== handSig) { // 手牌变化才重算枚举
+          let cand = [];
+          try { cand = analyzeHand({ hand: p.hand, melds: p.melds || [], quanfeng: game.quanfeng, menfeng: p.menfeng }); } catch (e) { cand = []; }
+          this._advCand[s] = cand; this._advHandSig[s] = handSig;
+        }
+        // 该家可摸到的余张 = 4 - 已现 - 自己手中持有
+        const rem = new Array(35).fill(0);
+        for (let t = 1; t <= 34; t++) rem[t] = 4 - seen[t];
+        for (const t of p.hand) if (t >= 1 && t <= 34) rem[t]--;
+        const list = filterByRemaining(this._advCand[s], rem, 3);
+        const showSig = list.map((x) => x.name + x.dist + ':' + x.tiles.join(',')).join('|');
+        if (this._advEmitSig[s] === showSig) continue;
+        this._advEmitSig[s] = showSig;
         this.manager.io.to(sid).emit('advice', { seat: s, list });
       }
     });
@@ -178,6 +197,8 @@ class Room {
   startHand() {
     this.ready = [false, false, false, false];
     this._advEmitSig = [null, null, null, null];
+    this._advHandSig = [null, null, null, null];
+    this._advCand = [[], [], [], []];
     this.handNo++;
     this.game = new Game({
       names: [0, 1, 2, 3].map((s) => this.playerName(s) || `玩家${s + 1}`),
