@@ -125,8 +125,8 @@
       prevPhase = view.phase;
     }
   });
-  socket.on('leftRoom', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; lastAdviceSig = null; showScreen('lobby'); socket.emit('listRooms'); });
-  socket.on('roomClosed', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; lastAdviceSig = null; showScreen('lobby'); socket.emit('listRooms'); toast('房间已关闭'); });
+  socket.on('leftRoom', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; showScreen('lobby'); socket.emit('listRooms'); });
+  socket.on('roomClosed', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; showScreen('lobby'); socket.emit('listRooms'); toast('房间已关闭'); });
 
   function mySeat() {
     if (lastGame) return lastGame.you;
