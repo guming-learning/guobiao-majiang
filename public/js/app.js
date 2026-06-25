@@ -270,16 +270,23 @@
   }
   function myHandEl(p, view) {
     const c = document.createElement('div'); c.className = 'my-hand';
-    const canDiscard = view.actions && view.actions.type === 'acting' && view.actions.discard;
+    const mustReturn = view.mustReturn && p.seat === view.you;
+    const canDiscard = !mustReturn && view.actions && view.actions.type === 'acting' && view.actions.discard;
+    const gained = view.mustReturn ? view.mustReturn.gained : null;
+    const tileOpts = (t) => {
+      if (mustReturn) return { onClick: () => sendAction({ type: 'skillReturn', tile: t }), cls: t === gained ? 'gained' : null };
+      return { onClick: canDiscard ? () => sendAction({ type: 'discard', tile: t }) : null };
+    };
     const hand = p.hand.slice();
     let drawn = view.myDraw;
     let drawnIdx = -1;
     if (drawn != null) { drawnIdx = hand.indexOf(drawn); if (drawnIdx >= 0) hand.splice(drawnIdx, 1); }
     hand.forEach((t) => {
-      c.appendChild(MJ.tileEl(t, { onClick: canDiscard ? () => sendAction({ type: 'discard', tile: t }) : null }));
+      c.appendChild(MJ.tileEl(t, tileOpts(t)));
     });
     if (drawnIdx >= 0) {
-      c.appendChild(MJ.tileEl(drawn, { cls: 'just-drawn', onClick: canDiscard ? () => sendAction({ type: 'discard', tile: drawn }) : null }));
+      const o = tileOpts(drawn); o.cls = (o.cls ? o.cls + ' ' : '') + 'just-drawn';
+      c.appendChild(MJ.tileEl(drawn, o));
     }
     return c;
   }
@@ -372,6 +379,12 @@
     const a = view.actions;
     if (!a || a.type === 'none') { hint.textContent = ''; return; } // 等待时顶栏“轮到X”已说明
     if (a.type === 'acting') {
+      if (a.mustReturn) {
+        const tname = (view.players[a.returnTarget] || {}).name || '对方';
+        hint.textContent = `🔄 已获得「${MJ.tileText(a.gained)}」，点一张牌还给${tname}`;
+        return;
+      }
+      if (a.extraDiscards > 0) { hint.textContent = `请再多弃 ${a.extraDiscards} 张`; return; }
       hint.textContent = '该你出牌';
       if (a.zimo) addBtn(bar, '自摸', 'act-hu', () => sendAction({ type: 'zimo' }));
       (a.angang || []).forEach((t) => addBtn(bar, '暗杠' + MJ.tileText(t), 'act-gang', () => sendAction({ type: 'angang', tile: t })));
@@ -397,12 +410,12 @@
 
   // ===== 娱乐场技能 =====
   const SKILLS_META = {
-    swapAll:     { name: '乾坤大挪移', desc: '与另一名玩家互换手牌/副露/花牌/弃牌（本回合摸到的牌不换）', need: 'player' },
     swapDiscard: { name: '偷梁换柱',   desc: '用手牌中的一张与弃牌堆中的一张互换', need: 'handDiscard' },
     draw2:       { name: '福至心灵',   desc: '本回合多摸两张；如未胡则多弃两张', need: 'none' },
-    forceSwap:   { name: '移花接木',   desc: '把指定玩家的一张随机手牌与弃牌堆中你指定的一张交换', need: 'playerDiscard' },
+    forceSwap:   { name: '移花接木',   desc: '从指定玩家手牌随机获得一张，再把你的一张牌（可含刚获得的）还给他', need: 'player' },
     peek:        { name: '洞若观火',   desc: '查看指定玩家的手牌', need: 'player' },
     flower3:     { name: '锦上添花',   desc: '使自己的花牌数 +3', need: 'none' },
+    lowFan:      { name: '六六大顺',   desc: '本局起，自己的胡牌番数下限降为 6 番', need: 'none' },
   };
   function renderSkill(view) {
     const badge = $('skill-badge');
@@ -417,7 +430,7 @@
     if (a.extraDiscards > 0 && view.current === view.you) {
       const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = `请再多弃 ${a.extraDiscards} 张`; badge.appendChild(s);
     } else if (view.mySkillUsed) {
-      const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = '已使用'; badge.appendChild(s);
+      const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = view.mySkill === 'lowFan' ? '已使用 · 起胡6番' : '已使用'; badge.appendChild(s);
       if (view.peek) { const b = document.createElement('button'); b.className = 'btn btn-small'; b.textContent = '查看结果'; b.addEventListener('click', () => showPeek(lastGame)); badge.appendChild(b); }
     } else if (usable) {
       const b = document.createElement('button'); b.className = 'btn btn-small btn-primary'; b.textContent = '使用技能'; b.addEventListener('click', () => startSkill(view)); badge.appendChild(b);
@@ -427,7 +440,7 @@
   }
   function startSkill(view) {
     const skill = view.mySkill; const meta = SKILLS_META[skill]; if (!meta) return;
-    const seq = { player: ['player'], handDiscard: ['handTile', 'discardTile'], playerDiscard: ['player', 'discardTile'], none: [] }[meta.need] || [];
+    const seq = { player: ['player'], handDiscard: ['handTile', 'discardTile'], none: [] }[meta.need] || [];
     if (!seq.length) { sendAction({ type: 'skill', skill }); return; }
     skillCtx = { skill, meta, view, steps: seq, idx: 0, params: {} };
     renderSkillStep();

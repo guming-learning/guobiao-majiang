@@ -10,12 +10,12 @@ function removeN(arr, id, n) { for (let k = 0; k < n; k++) removeOne(arr, id); }
 
 // 娱乐场技能（每局每位玩家随机获得 1 个，单次，在自己出牌阶段使用）
 const SKILLS = {
-  swapAll:     { name: '乾坤大挪移', desc: '与另一名玩家互换手牌、副露、花牌、弃牌（本回合摸到的牌不交换）', need: 'player' },
-  swapDiscard: { name: '偷梁换柱',   desc: '用手牌中的一张与弃牌堆中的一张互换', need: 'handDiscard' },
-  draw2:       { name: '福至心灵',   desc: '本回合多摸两张牌；如未胡牌则多弃两张', need: 'none' },
-  forceSwap:   { name: '移花接木',   desc: '把指定玩家的一张随机手牌与弃牌堆中你指定的一张交换', need: 'playerDiscard' },
-  peek:        { name: '洞若观火',   desc: '查看指定玩家的手牌', need: 'player' },
-  flower3:     { name: '锦上添花',   desc: '使自己的花牌数 +3', need: 'none' },
+  swapDiscard: { name: '偷梁换柱', desc: '用手牌中的一张与弃牌堆中的一张互换', need: 'handDiscard' },
+  draw2:       { name: '福至心灵', desc: '本回合多摸两张牌；如未胡牌则多弃两张', need: 'none' },
+  forceSwap:   { name: '移花接木', desc: '从指定玩家手牌中随机获得一张牌，再把你的一张牌（可含刚获得的）还给他', need: 'player' },
+  peek:        { name: '洞若观火', desc: '查看指定玩家的手牌', need: 'player' },
+  flower3:     { name: '锦上添花', desc: '使自己的花牌数 +3', need: 'none' },
+  lowFan:      { name: '六六大顺', desc: '本局起，自己的胡牌番数下限降为 6 番', need: 'none' },
 };
 const SKILL_IDS = Object.keys(SKILLS);
 
@@ -48,6 +48,8 @@ class Game {
     this.skillUsed = [false, false, false, false]; // 是否已用
     this.peeked = [null, null, null, null];        // 看牌结果：{target, hand}
     this._extraDiscards = 0;                        // draw2 技能待多弃的张数
+    this.minFanLow = [false, false, false, false];  // lowFan 技能：该玩家起胡降为6番
+    this._pendingReturn = null;                     // forceSwap 技能：待还牌 {seat,target,gained}
   }
 
   _emit(e) { this.onEvent(e); }
@@ -152,10 +154,11 @@ class Game {
     else concealed = p.hand.slice();
     const visible = this._countVisible(winTile);
     const juezhang = isZimo ? (visible === 3) : (visible === 4);
+    const minFan = this.minFanLow[seat] ? Math.min(6, this.minFan) : this.minFan;
     return R.evaluateWin({
       melds: p.melds, concealed, winTile, isZimo,
       quanfeng: this.quanfeng, menfeng: p.menfeng,
-      juezhang, haidi: this.haidi, gang: isGang, flowers: p.flowers, minFan: this.minFan,
+      juezhang, haidi: this.haidi, gang: isGang, flowers: p.flowers, minFan,
     });
   }
 
@@ -186,7 +189,9 @@ class Game {
   _actActing(seat, action) {
     if (seat !== this.current) return { error: '未轮到你' };
     const p = this.players[seat];
+    if (this._pendingReturn && this._pendingReturn.seat === seat && action.type !== 'skillReturn') return { error: '请先选择一张牌还给对方' };
     switch (action.type) {
+      case 'skillReturn': return this._skillReturnTile(seat, action);
       case 'discard': {
         if (countIn(p.hand, action.tile) === 0) return { error: '没有这张牌' };
         removeOne(p.hand, action.tile);
@@ -244,37 +249,17 @@ class Game {
     if (this._extraDiscards > 0) return { error: '请先完成弃牌' };
     let r;
     switch (skill) {
-      case 'swapAll': r = this._skillSwapAll(seat, action); break;
       case 'swapDiscard': r = this._skillSwapDiscard(seat, action); break;
       case 'draw2': r = this._skillDraw2(seat, action); break;
       case 'forceSwap': r = this._skillForceSwap(seat, action); break;
       case 'peek': r = this._skillPeek(seat, action); break;
       case 'flower3': r = this._skillFlower3(seat, action); break;
+      case 'lowFan': r = this._skillLowFan(seat, action); break;
       default: return { error: '未知技能' };
     }
     if (r && r.error) return r;
     this.skillUsed[seat] = true;
     this._emit({ type: 'skill', seat, skill });
-    return { ok: true };
-  }
-
-  _skillSwapAll(seat, action) {
-    const t = action.target;
-    if (t == null || t < 0 || t > 3 || t === seat) return { error: '目标无效' };
-    const P = this.players[seat], Q = this.players[t];
-    // 保留“本回合摸到的牌”（无摸牌则保留任意一张），使换牌后张数仍可正常出牌
-    let keep;
-    if (this.drewThisTurn && this.lastDraw && this.lastDraw.seat === seat && countIn(P.hand, this.lastDraw.tile) > 0) keep = this.lastDraw.tile;
-    else keep = P.hand[P.hand.length - 1];
-    removeOne(P.hand, keep);
-    [P.hand, Q.hand] = [Q.hand, P.hand];
-    [P.melds, Q.melds] = [Q.melds, P.melds];
-    [P.flowers, Q.flowers] = [Q.flowers, P.flowers];
-    [P.river, Q.river] = [Q.river, P.river];
-    P.hand.push(keep);
-    P.hand.sort((a, b) => a - b);
-    Q.hand.sort((a, b) => a - b);
-    this._logMsg(`${this._name(seat)} 与 ${this._name(t)} 换牌`);
     return { ok: true };
   }
 
@@ -305,17 +290,34 @@ class Game {
   }
 
   _skillForceSwap(seat, action) {
-    const t = action.target, ds = action.discardSeat, B = action.discardTile;
+    const t = action.target;
     if (t == null || t < 0 || t > 3 || t === seat) return { error: '目标无效' };
     const Q = this.players[t];
     if (!Q.hand.length) return { error: '目标无手牌' };
-    const river = (ds >= 0 && ds <= 3) ? this.players[ds].river : null;
-    if (!river || countIn(river, B) === 0) return { error: '弃牌堆中没有该牌' };
     const idx = Math.floor(Math.random() * Q.hand.length);
     const A = Q.hand[idx];
-    Q.hand.splice(idx, 1); Q.hand.push(B); Q.hand.sort((a, b) => a - b);
-    removeOne(river, B); river.push(A);
-    this._logMsg(`${this._name(seat)} 偷换了 ${this._name(t)} 的一张牌`);
+    Q.hand.splice(idx, 1);
+    this.players[seat].hand.push(A); this.players[seat].hand.sort((a, b) => a - b);
+    this._pendingReturn = { seat, target: t, gained: A }; // 待该玩家选一张还给对方
+    this._logMsg(`${this._name(seat)} 从 ${this._name(t)} 手中摸走一张`);
+    return { ok: true };
+  }
+  _skillReturnTile(seat, action) {
+    const pr = this._pendingReturn;
+    if (!pr || pr.seat !== seat) return { error: '当前无需还牌' };
+    const B = action.tile;
+    const P = this.players[seat];
+    if (countIn(P.hand, B) === 0) return { error: '手牌中没有该牌' };
+    removeOne(P.hand, B);
+    this.players[pr.target].hand.push(B); this.players[pr.target].hand.sort((a, b) => a - b);
+    this._pendingReturn = null;
+    this._logMsg(`${this._name(seat)} 还给 ${this._name(pr.target)} 一张`);
+    return { ok: true };
+  }
+
+  _skillLowFan(seat) {
+    this.minFanLow[seat] = true;
+    this._logMsg(`${this._name(seat)} 的起胡番数降为 6 番`);
     return { ok: true };
   }
 
@@ -511,6 +513,7 @@ class Game {
   getActions(seat) {
     if (this.phase === 'acting' && seat === this.current) {
       const p = this.players[seat];
+      if (this._pendingReturn && this._pendingReturn.seat === seat) return { type: 'acting', discard: false, mustReturn: true, gained: this._pendingReturn.gained, returnTarget: this._pendingReturn.target, angang: [], jiagang: [], zimo: false };
       if (this._extraDiscards > 0) return { type: 'acting', discard: true, angang: [], jiagang: [], zimo: false, extraDiscards: this._extraDiscards, drawnTile: null };
       const angang = [];
       const seen = new Set();
@@ -561,6 +564,8 @@ class Game {
       funMode: this.funMode,
       mySkill: this.funMode ? this.skills[seat] : null,
       mySkillUsed: this.skillUsed[seat],
+      myMinFan: this.minFanLow[seat] ? Math.min(6, this.minFan) : this.minFan,
+      mustReturn: (this._pendingReturn && this._pendingReturn.seat === seat) ? { gained: this._pendingReturn.gained, target: this._pendingReturn.target } : null,
       peek: this.peeked[seat] || null,   // {target, hand} 看牌结果（仅自己）
       wallCount: this.wall.length,
       you: seat,

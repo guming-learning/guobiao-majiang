@@ -241,6 +241,7 @@ html, body {
 .skill-tiles { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; --tw: clamp(22px, 5vw, 34px); margin: 4px 0; }
 .skill-river-grp { margin: 6px 0; }
 .skill-river-name { color: #9fc1a0; font-size: 11px; margin-bottom: 2px; text-align: center; }
+.tile.gained { box-shadow: 0 0 0 2px #e6b8ff, 0 2px 5px rgba(0,0,0,0.45); }
 
 /* 日志 */
 .log-box { position: absolute; left: 6px; bottom: 60px; width: 150px; max-height: 90px; overflow: hidden; font-size: 10px; color: rgba(255,255,255,0.5); pointer-events: none; }
