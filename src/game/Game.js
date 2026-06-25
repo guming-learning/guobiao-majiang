@@ -8,13 +8,25 @@ function countIn(arr, id) { let c = 0; for (const x of arr) if (x === id) c++; r
 function removeOne(arr, id) { const i = arr.indexOf(id); if (i >= 0) arr.splice(i, 1); }
 function removeN(arr, id, n) { for (let k = 0; k < n; k++) removeOne(arr, id); }
 
+// 娱乐场技能（每局每位玩家随机获得 1 个，单次，在自己出牌阶段使用）
+const SKILLS = {
+  swapAll:     { name: '乾坤大挪移', desc: '与另一名玩家互换手牌、副露、花牌、弃牌（本回合摸到的牌不交换）', need: 'player' },
+  swapDiscard: { name: '偷梁换柱',   desc: '用手牌中的一张与弃牌堆中的一张互换', need: 'handDiscard' },
+  draw2:       { name: '福至心灵',   desc: '本回合多摸两张牌；如未胡牌则多弃两张', need: 'none' },
+  forceSwap:   { name: '移花接木',   desc: '把指定玩家的一张随机手牌与弃牌堆中你指定的一张交换', need: 'playerDiscard' },
+  peek:        { name: '洞若观火',   desc: '查看指定玩家的手牌', need: 'player' },
+  flower3:     { name: '锦上添花',   desc: '使自己的花牌数 +3', need: 'none' },
+};
+const SKILL_IDS = Object.keys(SKILLS);
+
 class Game {
-  constructor({ names, scores, dealer, quanfeng, onEvent, minFan }) {
+  constructor({ names, scores, dealer, quanfeng, onEvent, minFan, funMode }) {
     this.names = names || ['', '', '', ''];
     this.scores = scores || [0, 0, 0, 0]; // 与 Room 共享引用
     this.dealer = dealer;
     this.quanfeng = quanfeng || T.TILE_E;
     this.minFan = minFan || 8; // 起胡番数
+    this.funMode = !!funMode; // 娱乐场
     this.onEvent = onEvent || (() => {});
     this.players = [0, 1, 2, 3].map((s) => ({
       seat: s, hand: [], melds: [], flowers: [], river: [],
@@ -32,6 +44,10 @@ class Game {
     this.haidi = false;
     this.result = null;
     this.log = [];
+    this.skills = [null, null, null, null];      // 各玩家技能 id
+    this.skillUsed = [false, false, false, false]; // 是否已用
+    this.peeked = [null, null, null, null];        // 看牌结果：{target, hand}
+    this._extraDiscards = 0;                        // draw2 技能待多弃的张数
   }
 
   _emit(e) { this.onEvent(e); }
@@ -45,6 +61,9 @@ class Game {
     }
     this._replaceFlowersInitial();
     for (const p of this.players) p.hand.sort((a, b) => a - b);
+    if (this.funMode) {
+      for (let s = 0; s < 4; s++) this.skills[s] = SKILL_IDS[Math.floor(Math.random() * SKILL_IDS.length)];
+    }
     this._logMsg(`开局，庄家：${this._name(this.dealer)}（${R.WIND_NAME[this.quanfeng]}圈）`);
     this._emit({ type: 'start', dealer: this.dealer });
     this._drawAndAct(this.dealer);
@@ -173,12 +192,19 @@ class Game {
         removeOne(p.hand, action.tile);
         p.river.push(action.tile);
         this.lastDiscard = { seat, tile: action.tile };
+        if (this._extraDiscards > 0) { // 技能“多摸两张”后需多弃，不可被认领、不过手
+          this._extraDiscards--;
+          this._logMsg(`${this._name(seat)} 多弃一张`);
+          this._emit({ type: 'discard', seat, tile: action.tile, extra: true });
+          return { ok: true };
+        }
         this.drewThisTurn = false; this.gangFlag = false;
         this._logMsg(`${this._name(seat)} 打出 ${new Tile(action.tile).UTF8()}`);
         this._emit({ type: 'discard', seat, tile: action.tile });
         this._offerClaimsForDiscard(seat, action.tile);
         return { ok: true };
       }
+      case 'skill': return this._useSkill(seat, action);
       case 'angang': {
         if (countIn(p.hand, action.tile) !== 4) return { error: '不能暗杠' };
         removeN(p.hand, action.tile, 4);
@@ -206,6 +232,107 @@ class Game {
       default:
         return { error: '非法操作' };
     }
+  }
+
+  // ===== 娱乐场技能 =====
+  _useSkill(seat, action) {
+    if (!this.funMode) return { error: '非娱乐场' };
+    if (seat !== this.current) return { error: '未轮到你' };
+    const skill = this.skills[seat];
+    if (!skill || skill !== action.skill) return { error: '技能不符' };
+    if (this.skillUsed[seat]) return { error: '技能已使用过' };
+    if (this._extraDiscards > 0) return { error: '请先完成弃牌' };
+    let r;
+    switch (skill) {
+      case 'swapAll': r = this._skillSwapAll(seat, action); break;
+      case 'swapDiscard': r = this._skillSwapDiscard(seat, action); break;
+      case 'draw2': r = this._skillDraw2(seat, action); break;
+      case 'forceSwap': r = this._skillForceSwap(seat, action); break;
+      case 'peek': r = this._skillPeek(seat, action); break;
+      case 'flower3': r = this._skillFlower3(seat, action); break;
+      default: return { error: '未知技能' };
+    }
+    if (r && r.error) return r;
+    this.skillUsed[seat] = true;
+    this._emit({ type: 'skill', seat, skill });
+    return { ok: true };
+  }
+
+  _skillSwapAll(seat, action) {
+    const t = action.target;
+    if (t == null || t < 0 || t > 3 || t === seat) return { error: '目标无效' };
+    const P = this.players[seat], Q = this.players[t];
+    // 保留“本回合摸到的牌”（无摸牌则保留任意一张），使换牌后张数仍可正常出牌
+    let keep;
+    if (this.drewThisTurn && this.lastDraw && this.lastDraw.seat === seat && countIn(P.hand, this.lastDraw.tile) > 0) keep = this.lastDraw.tile;
+    else keep = P.hand[P.hand.length - 1];
+    removeOne(P.hand, keep);
+    [P.hand, Q.hand] = [Q.hand, P.hand];
+    [P.melds, Q.melds] = [Q.melds, P.melds];
+    [P.flowers, Q.flowers] = [Q.flowers, P.flowers];
+    [P.river, Q.river] = [Q.river, P.river];
+    P.hand.push(keep);
+    P.hand.sort((a, b) => a - b);
+    Q.hand.sort((a, b) => a - b);
+    this._logMsg(`${this._name(seat)} 与 ${this._name(t)} 换牌`);
+    return { ok: true };
+  }
+
+  _skillSwapDiscard(seat, action) {
+    const A = action.handTile, ds = action.discardSeat, B = action.discardTile;
+    const P = this.players[seat];
+    if (countIn(P.hand, A) === 0) return { error: '手牌中没有该牌' };
+    const river = (ds >= 0 && ds <= 3) ? this.players[ds].river : null;
+    if (!river || countIn(river, B) === 0) return { error: '弃牌堆中没有该牌' };
+    removeOne(P.hand, A); P.hand.push(B); P.hand.sort((a, b) => a - b);
+    removeOne(river, B); river.push(A);
+    this._logMsg(`${this._name(seat)} 用手牌换弃牌`);
+    return { ok: true };
+  }
+
+  _skillDraw2(seat) {
+    let last = null;
+    for (let k = 0; k < 2; k++) {
+      const res = this._draw(seat, true); // 从牌尾摸，自动补花
+      if (res.drained) break;
+      last = res.tile;
+    }
+    this.players[seat].hand.sort((a, b) => a - b);
+    if (last != null) this.lastDraw = { seat, tile: last };
+    this._extraDiscards = 2;
+    this._logMsg(`${this._name(seat)} 多摸两张`);
+    return { ok: true };
+  }
+
+  _skillForceSwap(seat, action) {
+    const t = action.target, ds = action.discardSeat, B = action.discardTile;
+    if (t == null || t < 0 || t > 3 || t === seat) return { error: '目标无效' };
+    const Q = this.players[t];
+    if (!Q.hand.length) return { error: '目标无手牌' };
+    const river = (ds >= 0 && ds <= 3) ? this.players[ds].river : null;
+    if (!river || countIn(river, B) === 0) return { error: '弃牌堆中没有该牌' };
+    const idx = Math.floor(Math.random() * Q.hand.length);
+    const A = Q.hand[idx];
+    Q.hand.splice(idx, 1); Q.hand.push(B); Q.hand.sort((a, b) => a - b);
+    removeOne(river, B); river.push(A);
+    this._logMsg(`${this._name(seat)} 偷换了 ${this._name(t)} 的一张牌`);
+    return { ok: true };
+  }
+
+  _skillPeek(seat, action) {
+    const t = action.target;
+    if (t == null || t < 0 || t > 3 || t === seat) return { error: '目标无效' };
+    this.peeked[seat] = { target: t, hand: this.players[t].hand.slice().sort((a, b) => a - b) };
+    this._logMsg(`${this._name(seat)} 查看了 ${this._name(t)} 的手牌`);
+    return { ok: true };
+  }
+
+  _skillFlower3(seat) {
+    const p = this.players[seat];
+    const pool = [T.TILE_MEI, T.TILE_LAN, T.TILE_ZHU, T.TILE_JU, T.TILE_CHU, T.TILE_XIA, T.TILE_QIU, T.TILE_DONG];
+    for (let k = 0; k < 3; k++) p.flowers.push(pool[(p.flowers.length + k) % pool.length]);
+    this._logMsg(`${this._name(seat)} 花牌+3`);
+    return { ok: true };
   }
 
   _offerClaimsForDiscard(from, tile) {
@@ -384,6 +511,7 @@ class Game {
   getActions(seat) {
     if (this.phase === 'acting' && seat === this.current) {
       const p = this.players[seat];
+      if (this._extraDiscards > 0) return { type: 'acting', discard: true, angang: [], jiagang: [], zimo: false, extraDiscards: this._extraDiscards, drawnTile: null };
       const angang = [];
       const seen = new Set();
       for (const t of p.hand) { if (!seen.has(t) && countIn(p.hand, t) === 4) { angang.push(t); seen.add(t); } }
@@ -420,6 +548,8 @@ class Game {
       }),
       flowers: p.flowers.slice(),
       river: p.river.slice(),
+      skill: this.funMode ? this.skills[p.seat] : null,   // 各家技能公开
+      skillUsed: this.skillUsed[p.seat],
     }));
     return {
       phase: this.phase,
@@ -428,6 +558,10 @@ class Game {
       quanfeng: this.quanfeng,
       quanfengName: R.WIND_NAME[this.quanfeng],
       minFan: this.minFan,
+      funMode: this.funMode,
+      mySkill: this.funMode ? this.skills[seat] : null,
+      mySkillUsed: this.skillUsed[seat],
+      peek: this.peeked[seat] || null,   // {target, hand} 看牌结果（仅自己）
       wallCount: this.wall.length,
       you: seat,
       players,
@@ -451,8 +585,9 @@ class Game {
     v.actions = { type: 'none' };
     v.spectator = true;
     v.you = persp;
+    v.mySkill = null; v.mySkillUsed = false; v.peek = null; // 观战者无技能
     return v;
   }
 }
 
-module.exports = { Game };
+module.exports = { Game, SKILLS };

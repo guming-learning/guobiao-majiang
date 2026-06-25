@@ -14,6 +14,8 @@
   let resultHidden = false; // 结算面板是否被收起（露出牌桌看牌）
   let lastAdvice = null;    // 番型提示列表（对局中持续保留，出牌后不消失，结束才清空）
   let adviceHidden = localStorage.getItem('mj_advice_hidden') === '1';
+  let lastPeekSig = null;   // 上次自动展示的看牌结果签名
+  let skillCtx = null;      // 技能使用流程上下文
 
   const $ = (id) => document.getElementById(id);
   const screens = { login: $('login-screen'), lobby: $('lobby-screen'), table: $('table-screen') };
@@ -45,9 +47,10 @@
   $('cfg-ok').addEventListener('click', () => {
     const turnTime = parseInt($('cfg-time').value, 10);
     const minFan = parseInt($('cfg-fan').value, 10);
+    const funMode = $('cfg-fun').checked;
     amSpectator = false;
     $('create-modal').classList.remove('active');
-    socket.emit('createRoom', { turnTime, minFan });
+    socket.emit('createRoom', { turnTime, minFan, funMode });
   });
   $('refresh-btn').addEventListener('click', () => socket.emit('listRooms'));
   socket.on('lobby', renderLobby);
@@ -108,6 +111,8 @@
     if (view.phase !== 'ended') resultHidden = false; // 新一局重置收起状态
     if (view.phase === 'ended') lastAdvice = null; // 仅本局结束才清空提示（出牌/他人操作时保留不消失）
     renderBoard(view); renderTopbar(); updateOverlays();
+    renderSkill(view);
+    if (view.peek) { const sig = view.peek.target + ':' + view.peek.hand.join(','); if (sig !== lastPeekSig) { lastPeekSig = sig; showPeek(view); } } else { lastPeekSig = null; }
     // 音效：轮到你 / 本局结束
     if (window.SFX) {
       const myTurn = !amSpectator && view.phase === 'acting' && view.current === view.you && view.actions && view.actions.type === 'acting';
@@ -390,6 +395,101 @@
   }
   function sendAction(action) { socket.emit('action', action); }
 
+  // ===== 娱乐场技能 =====
+  const SKILLS_META = {
+    swapAll:     { name: '乾坤大挪移', desc: '与另一名玩家互换手牌/副露/花牌/弃牌（本回合摸到的牌不换）', need: 'player' },
+    swapDiscard: { name: '偷梁换柱',   desc: '用手牌中的一张与弃牌堆中的一张互换', need: 'handDiscard' },
+    draw2:       { name: '福至心灵',   desc: '本回合多摸两张；如未胡则多弃两张', need: 'none' },
+    forceSwap:   { name: '移花接木',   desc: '把指定玩家的一张随机手牌与弃牌堆中你指定的一张交换', need: 'playerDiscard' },
+    peek:        { name: '洞若观火',   desc: '查看指定玩家的手牌', need: 'player' },
+    flower3:     { name: '锦上添花',   desc: '使自己的花牌数 +3', need: 'none' },
+  };
+  function renderSkill(view) {
+    const badge = $('skill-badge');
+    if (!view || !view.funMode || amSpectator || !view.mySkill) { badge.classList.remove('show'); badge.innerHTML = ''; return; }
+    const meta = SKILLS_META[view.mySkill] || { name: view.mySkill, desc: '' };
+    const a = view.actions || {};
+    const usable = view.phase === 'acting' && view.current === view.you && !view.mySkillUsed && !(a.extraDiscards > 0);
+    badge.classList.add('show');
+    badge.innerHTML = '';
+    const t = document.createElement('div'); t.className = 'sk-name'; t.textContent = '🎴 ' + meta.name; badge.appendChild(t);
+    const d = document.createElement('div'); d.className = 'sk-desc'; d.textContent = meta.desc; badge.appendChild(d);
+    if (a.extraDiscards > 0 && view.current === view.you) {
+      const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = `请再多弃 ${a.extraDiscards} 张`; badge.appendChild(s);
+    } else if (view.mySkillUsed) {
+      const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = '已使用'; badge.appendChild(s);
+      if (view.peek) { const b = document.createElement('button'); b.className = 'btn btn-small'; b.textContent = '查看结果'; b.addEventListener('click', () => showPeek(lastGame)); badge.appendChild(b); }
+    } else if (usable) {
+      const b = document.createElement('button'); b.className = 'btn btn-small btn-primary'; b.textContent = '使用技能'; b.addEventListener('click', () => startSkill(view)); badge.appendChild(b);
+    } else {
+      const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = '轮到你出牌时可用'; badge.appendChild(s);
+    }
+  }
+  function startSkill(view) {
+    const skill = view.mySkill; const meta = SKILLS_META[skill]; if (!meta) return;
+    const seq = { player: ['player'], handDiscard: ['handTile', 'discardTile'], playerDiscard: ['player', 'discardTile'], none: [] }[meta.need] || [];
+    if (!seq.length) { sendAction({ type: 'skill', skill }); return; }
+    skillCtx = { skill, meta, view, steps: seq, idx: 0, params: {} };
+    renderSkillStep();
+  }
+  function renderSkillStep() {
+    const c = skillCtx; if (!c) return;
+    $('skill-title').textContent = '使用：' + c.meta.name;
+    $('skill-desc').textContent = c.meta.desc;
+    const box = $('skill-step'); box.innerHTML = '';
+    $('skill-modal').classList.add('active');
+    const step = c.steps[c.idx];
+    const label = (txt) => { const d = document.createElement('div'); d.className = 'skill-label'; d.textContent = txt; box.appendChild(d); };
+    if (step === 'player') {
+      label('选择目标玩家');
+      const wrap = document.createElement('div'); wrap.className = 'skill-players';
+      c.view.players.filter((p) => p.seat !== c.view.you).forEach((p) => {
+        const b = document.createElement('button'); b.className = 'btn skill-opt'; b.textContent = p.name + (p.isDealer ? '(庄)' : '');
+        b.addEventListener('click', () => { c.params.target = p.seat; advanceSkill(); }); wrap.appendChild(b);
+      });
+      box.appendChild(wrap);
+    } else if (step === 'handTile') {
+      label('选择要换出的手牌');
+      const me = c.view.players.find((p) => p.seat === c.view.you);
+      const row = document.createElement('div'); row.className = 'skill-tiles';
+      (me.hand || []).slice().sort((a, b) => a - b).forEach((t) => row.appendChild(MJ.tileEl(t, { onClick: () => { c.params.handTile = t; advanceSkill(); } })));
+      box.appendChild(row);
+    } else if (step === 'discardTile') {
+      label('选择弃牌堆中的一张');
+      let any = false;
+      c.view.players.forEach((p) => {
+        if (!p.river || !p.river.length) return; any = true;
+        const grp = document.createElement('div'); grp.className = 'skill-river-grp';
+        const nm = document.createElement('div'); nm.className = 'skill-river-name'; nm.textContent = p.name;
+        const row = document.createElement('div'); row.className = 'skill-tiles';
+        p.river.forEach((t) => row.appendChild(MJ.tileEl(t, { onClick: () => { c.params.discardSeat = p.seat; c.params.discardTile = t; advanceSkill(); } })));
+        grp.appendChild(nm); grp.appendChild(row); box.appendChild(grp);
+      });
+      if (!any) { label('弃牌堆为空，无法使用'); }
+    }
+  }
+  function advanceSkill() {
+    const c = skillCtx; if (!c) return;
+    c.idx++;
+    if (c.idx >= c.steps.length) {
+      $('skill-modal').classList.remove('active');
+      sendAction({ type: 'skill', skill: c.skill, ...c.params });
+      skillCtx = null;
+    } else renderSkillStep();
+  }
+  function showPeek(view) {
+    if (!view || !view.peek) return;
+    const pk = view.peek; const tgt = (view.players || []).find((p) => p.seat === pk.target);
+    $('skill-title').textContent = '查看手牌：' + (tgt ? tgt.name : '');
+    $('skill-desc').textContent = '';
+    const box = $('skill-step'); box.innerHTML = '';
+    const row = document.createElement('div'); row.className = 'skill-tiles';
+    pk.hand.forEach((t) => row.appendChild(MJ.tileEl(t)));
+    box.appendChild(row);
+    $('skill-modal').classList.add('active');
+  }
+  $('skill-cancel').addEventListener('click', () => { $('skill-modal').classList.remove('active'); skillCtx = null; });
+
   // ===== 结算 =====
   function renderResult(view) {
     const card = $('result-card'); card.innerHTML = '';
@@ -455,6 +555,11 @@
     else if (e.type === 'chi') { flash('吃！'); if (window.SFX) { SFX.claim(); SFX.say('chi'); } }
     else if (e.type === 'gang') { flash(e.kind === 'angang' ? '暗杠！' : e.kind === 'jiagang' ? '加杠！' : '杠！'); if (window.SFX) { SFX.claim(); SFX.say(e.kind === 'angang' ? 'angang' : 'gang'); } }
     else if (e.type === 'flower') { flash('补花'); if (window.SFX) { SFX.flower(); SFX.say('buhua'); } }
+    else if (e.type === 'skill') {
+      const nm = (lastGame && lastGame.players[e.seat]) ? lastGame.players[e.seat].name : '玩家';
+      const sk = (SKILLS_META[e.skill] || {}).name || '技能';
+      flash(`${nm} 使用了「${sk}」`);
+    }
   });
 
   let toastTimer = null;

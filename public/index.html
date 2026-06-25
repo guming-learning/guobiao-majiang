@@ -57,6 +57,7 @@
             <option value="32">32 番</option>
           </select>
         </label>
+        <label class="cfg-check"><input type="checkbox" id="cfg-fun" /> 娱乐场（每局随机技能）</label>
         <div class="modal-btns">
           <button id="cfg-cancel" class="btn">取消</button>
           <button id="cfg-ok" class="btn btn-primary">创建</button>
@@ -89,6 +90,7 @@
     </div>
 
     <div id="action-bar" class="action-bar"></div>
+    <div id="skill-badge" class="skill-badge"></div>
 
     <!-- 等待/准备 浮层 -->
     <div id="wait-overlay" class="overlay">
@@ -109,6 +111,18 @@
     </div>
     <!-- 收起结算后居中的继续按钮 -->
     <button id="float-next" class="float-next">继续下一局</button>
+
+    <!-- 娱乐场技能：目标/牌选择 -->
+    <div id="skill-modal" class="modal-mask">
+      <div class="modal-card">
+        <h3 id="skill-title">使用技能</h3>
+        <div id="skill-desc" class="skill-desc"></div>
+        <div id="skill-step" class="skill-step"></div>
+        <div class="modal-btns">
+          <button id="skill-cancel" class="btn">取消</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 事件提示 -->
     <div id="toast" class="toast"></div>

@@ -26,6 +26,7 @@ class Room {
     this.quanfeng = T.TILE_E;
     this.turnTime = 60000; // 出牌等待(毫秒)，可在建房时设置，默认 60 秒
     this.minFan = 8;       // 起胡番数，可在建房时设置(8/16/32)
+    this.funMode = false;  // 娱乐场（每局随机技能）
     this.game = null;
     this.handNo = 0;
     this.timer = null;
@@ -124,6 +125,7 @@ class Room {
       handNo: this.handNo,
       turnTime: this.turnTime,
       minFan: this.minFan,
+      funMode: this.funMode,
       spectators: this.spectators.length,
       inGame: this.inGame(),
       phase: this.game ? this.game.phase : 'waiting',
@@ -206,6 +208,7 @@ class Room {
       dealer: this.dealer,
       quanfeng: this.quanfeng,
       minFan: this.minFan,
+      funMode: this.funMode,
       onEvent: (e) => this.onGameEvent(e),
     });
     this.game.start();
@@ -440,6 +443,7 @@ class RoomManager {
     if ([0, 20, 60].includes(tt)) room.turnTime = tt * 1000; // 0 = 无限制
     const mf = parseInt(opts && opts.minFan, 10);
     if ([8, 16, 32].includes(mf)) room.minFan = mf;
+    room.funMode = !!(opts && opts.funMode);
     this.rooms.set(room.id, room);
     this._join(socket, room);
   }

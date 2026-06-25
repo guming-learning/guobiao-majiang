@@ -224,6 +224,24 @@ html, body {
 .modal-card select { padding: 8px 10px; border-radius: 8px; font-size: 15px; min-width: 120px; border: none; background: #fff; color: #222; }
 .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 
+/* ===== 娱乐场技能 ===== */
+.cfg-check { display: flex !important; justify-content: flex-start !important; gap: 8px; font-size: 14px; }
+.cfg-check input { width: 16px; height: 16px; }
+.skill-badge { position: absolute; top: 40px; left: 6px; z-index: 25; display: none; max-width: 46vw; background: rgba(46,22,64,0.85); border: 1px solid rgba(206,160,235,0.5); border-radius: 10px; padding: 5px 8px; }
+.skill-badge.show { display: block; }
+.sk-name { color: #e6b8ff; font-weight: 700; font-size: 12px; }
+.sk-desc { color: #d7e6d7; font-size: 10px; line-height: 1.25; margin: 2px 0; }
+.sk-status { color: #9fc1a0; font-size: 10px; }
+.skill-badge .btn { margin-top: 3px; padding: 2px 10px; }
+.skill-desc { color: #cfe6cf; font-size: 13px; text-align: center; margin-bottom: 10px; }
+.skill-step { max-height: 56vh; overflow-y: auto; }
+.skill-label { color: var(--gold); font-size: 13px; margin: 8px 0 4px; text-align: center; }
+.skill-players { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.skill-opt { background: #1f5135; }
+.skill-tiles { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; --tw: clamp(22px, 5vw, 34px); margin: 4px 0; }
+.skill-river-grp { margin: 6px 0; }
+.skill-river-name { color: #9fc1a0; font-size: 11px; margin-bottom: 2px; text-align: center; }
+
 /* 日志 */
 .log-box { position: absolute; left: 6px; bottom: 60px; width: 150px; max-height: 90px; overflow: hidden; font-size: 10px; color: rgba(255,255,255,0.5); pointer-events: none; }
 
