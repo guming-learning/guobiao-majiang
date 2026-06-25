@@ -168,7 +168,7 @@ class Room {
           const reqSig = handSig;
           analyzeAsync({
             hand: p.hand.slice(),
-            melds: (p.melds || []).map((m) => ({ type: m.type, tiles: (m.tiles || []).slice() })),
+            melds: (p.melds || []).map((m) => ({ ...m, tiles: (m.tiles || []).slice() })),
             quanfeng: game.quanfeng,
             menfeng: p.menfeng,
           }).then((cand) => {
@@ -240,13 +240,21 @@ class Room {
   }
 
   nextHand() {
-    // 庄家轮换：庄家和或流局连庄，否则轮换
+    // 庄家轮换：庄家和或流局连庄，否则轮换；庄家轮满一圈则圈风递进 东→南→西→北→东…
     const res = this.game ? this.game.result : null;
     if (res && res.type !== 'draw') {
       const winnerSeats = (res.winners || []).map((w) => w.seat);
-      if (!winnerSeats.includes(this.dealer)) this.dealer = (this.dealer + 1) % 4;
+      if (!winnerSeats.includes(this.dealer)) {
+        this.dealer = (this.dealer + 1) % 4;
+        if (this.dealer === 0) this._advanceRoundWind(); // 庄家轮回到起始座位，进入下一圈
+      }
     }
     this.startHand();
+  }
+
+  _advanceRoundWind() {
+    const order = [T.TILE_E, T.TILE_S, T.TILE_W, T.TILE_N];
+    this.quanfeng = order[(order.indexOf(this.quanfeng) + 1) % 4];
   }
 
   // ===== 动作 =====
