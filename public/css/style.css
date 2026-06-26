@@ -1,4 +1,4 @@
-* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 :root {
   --felt: #0b6b3a;
   --felt-dark: #074d29;
@@ -128,7 +128,8 @@ html, body {
 
 /* 我的手牌 */
 .my-hand { display: flex; flex-wrap: nowrap; gap: 3px; --tw: calc(clamp(19px, 4vw, 34px) * var(--ui-scale, 1)); --th: clamp(27px, 5.6vw, 47px); justify-content: center; }
-.my-hand .tile.selectable:hover { transform: translateY(-3px); }
+/* 抬起效果仅在支持悬停的设备(鼠标)上启用；触摸设备启用 :hover 会出现“需点两次”的问题 */
+@media (hover: hover) { .my-hand .tile.selectable:hover { transform: translateY(-3px); } }
 /* 别家手牌（背面） */
 .hand-row { display: flex; gap: 2px; --tw: calc(clamp(10px, 1.7vw, 15px) * var(--ui-scale, 1)); --th: clamp(14px, 2.5vw, 22px); flex-wrap: wrap; justify-content: center; max-width: 100%; }
 

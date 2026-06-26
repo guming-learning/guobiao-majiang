@@ -95,7 +95,7 @@
   socket.on('advice', (d) => {
     if (!lastGame || amSpectator || !d || d.seat !== lastGame.you) return;
     lastAdvice = d.list || [];
-    if (!adviceHidden) renderBoard(lastGame);
+    if (!adviceHidden) refreshAdvice();
   });
 
   let prevMyTurn = false, prevPhase = null;
@@ -305,12 +305,25 @@
   function hideAdvice() {
     adviceHidden = true;
     localStorage.setItem('mj_advice_hidden', '1');
-    if (lastGame && !amSpectator) renderBoard(lastGame);
+    if (lastGame && !amSpectator) refreshAdvice();
   }
   function showAdvice() {
     adviceHidden = false;
     localStorage.setItem('mj_advice_hidden', '0');
-    if (lastGame && !amSpectator) renderBoard(lastGame);
+    if (lastGame && !amSpectator) refreshAdvice();
+  }
+  // 只重建底部（我）的信息行（含番型提示/显示提示按钮），不触碰手牌 DOM。
+  // 否则提示异步更新会整块重渲染手牌，正在点牌时手牌被销毁，手机端触摸大量落空。
+  function refreshAdvice() {
+    if (!lastGame || amSpectator) return;
+    const area = document.querySelector('.seat-area.seat-bottom');
+    if (!area) return;
+    const me = lastGame.players.find((p) => p.seat === lastGame.you);
+    if (!me) return;
+    const oldRow = area.querySelector('.info-row');
+    const newRow = infoRowEl(me);
+    if (oldRow) oldRow.replaceWith(newRow);
+    else area.appendChild(newRow);
   }
   function adviceEl(list) {
     const box = document.createElement('div'); box.className = 'advice';
