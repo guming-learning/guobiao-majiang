@@ -13,7 +13,11 @@
   let amSpectator = false;
   let resultHidden = false; // 结算面板是否被收起（露出牌桌看牌）
   let lastAdvice = null;    // 番型提示列表（对局中持续保留，出牌后不消失，结束才清空）
-  let adviceHidden = localStorage.getItem('mj_advice_hidden') === '1';
+  let adviceHidden = (function () {
+    const s = localStorage.getItem('mj_advice_hidden');
+    // 触摸设备默认收起番型提示（避免占用/遮挡手牌）；桌面默认展示
+    return s === null ? window.matchMedia('(pointer: coarse)').matches : s === '1';
+  })();
   let lastPeekSig = null;   // 上次自动展示的看牌结果签名
   let skillCtx = null;      // 技能使用流程上下文
 
@@ -95,7 +99,7 @@
   socket.on('advice', (d) => {
     if (!lastGame || amSpectator || !d || d.seat !== lastGame.you) return;
     lastAdvice = d.list || [];
-    if (!adviceHidden) refreshAdvice();
+    renderAdviceFloat();
   });
 
   let prevMyTurn = false, prevPhase = null;
@@ -111,7 +115,7 @@
     if (view.phase !== 'ended') resultHidden = false; // 新一局重置收起状态
     if (view.phase === 'ended') lastAdvice = null; // 仅本局结束才清空提示（出牌/他人操作时保留不消失）
     renderBoard(view); renderTopbar(); updateOverlays();
-    renderSkill(view);
+    renderSkill(view); renderAdviceFloat();
     if (view.peek) { const sig = view.peek.target + ':' + view.peek.hand.join(','); if (sig !== lastPeekSig) { lastPeekSig = sig; showPeek(view); } } else { lastPeekSig = null; }
     // 音效：轮到你 / 本局结束
     if (window.SFX) {
@@ -305,25 +309,29 @@
   function hideAdvice() {
     adviceHidden = true;
     localStorage.setItem('mj_advice_hidden', '1');
-    if (lastGame && !amSpectator) refreshAdvice();
+    renderAdviceFloat();
   }
   function showAdvice() {
     adviceHidden = false;
     localStorage.setItem('mj_advice_hidden', '0');
-    if (lastGame && !amSpectator) refreshAdvice();
+    renderAdviceFloat();
   }
-  // 只重建底部（我）的信息行（含番型提示/显示提示按钮），不触碰手牌 DOM。
-  // 否则提示异步更新会整块重渲染手牌，正在点牌时手牌被销毁，手机端触摸大量落空。
-  function refreshAdvice() {
-    if (!lastGame || amSpectator) return;
-    const area = document.querySelector('.seat-area.seat-bottom');
-    if (!area) return;
-    const me = lastGame.players.find((p) => p.seat === lastGame.you);
-    if (!me) return;
-    const oldRow = area.querySelector('.info-row');
-    const newRow = infoRowEl(me);
-    if (oldRow) oldRow.replaceWith(newRow);
-    else area.appendChild(newRow);
+  // 番型提示渲染为浮动面板（绝对定位于左上角空白处），不占用手牌行空间、不遮挡手牌；手机默认收起。
+  function renderAdviceFloat() {
+    const box = $('advice-float');
+    if (!box) return;
+    box.innerHTML = '';
+    if (amSpectator || !lastGame || lastGame.phase === 'ended') { box.style.display = 'none'; return; }
+    if (adviceHidden) {
+      box.style.display = 'block';
+      const b = document.createElement('button'); b.className = 'advice-show'; b.textContent = '显示提示';
+      b.addEventListener('click', showAdvice); box.appendChild(b);
+    } else if (lastAdvice && lastAdvice.length) {
+      box.style.display = 'block';
+      box.appendChild(adviceEl(lastAdvice));
+    } else {
+      box.style.display = 'none';
+    }
   }
   function adviceEl(list) {
     const box = document.createElement('div'); box.className = 'advice';
@@ -346,15 +354,6 @@
   function infoRowEl(p) {
     const row = document.createElement('div');
     row.className = 'info-row';
-    if (!amSpectator && lastGame && p.seat === lastGame.you) {
-      if (adviceHidden) {
-        const b = document.createElement('button'); b.className = 'advice-show'; b.textContent = '显示提示';
-        b.addEventListener('click', showAdvice);
-        row.appendChild(b); // 隐藏后在名字左侧给出“显示提示”按钮
-      } else if (lastAdvice && lastAdvice.length) {
-        row.appendChild(adviceEl(lastAdvice)); // 番型提示放在名字左侧
-      }
-    }
     row.appendChild(pinfoEl(p));
     if (p.melds.length) row.appendChild(meldsEl(p.melds)); // 副露放在名字右侧
     return row;
