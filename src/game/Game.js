@@ -634,8 +634,15 @@ class Game {
       handCount: p.hand.length,
       hand: (p.seat === seat || this.phase === 'ended') ? p.hand.slice().sort((a, b) => a - b) : null, // 结束后展示所有手牌
       melds: p.melds.map((m) => {
-        const hideAngang = m.type === 'angang' && p.seat !== seat; // 别家暗杠不泄露牌面
-        return { type: m.type, tiles: hideAngang ? m.tiles.map(() => 0) : m.tiles.slice(), from: m.from, claimed: m.claimed, concealed: m.type === 'angang' };
+        if (m.type === 'angang') {
+          // 暗杠：结束时全部亮出；对局中自己亮一张、别家全暗
+          let tiles;
+          if (this.phase === 'ended') tiles = m.tiles.slice();
+          else if (p.seat === seat) tiles = [m.tile, 0, 0, 0];
+          else tiles = [0, 0, 0, 0];
+          return { type: m.type, tiles, from: m.from, claimed: m.claimed, concealed: true };
+        }
+        return { type: m.type, tiles: m.tiles.slice(), from: m.from, claimed: m.claimed, concealed: false };
       }),
       flowers: p.flowers.slice(),
       river: p.river.slice(),
@@ -673,7 +680,7 @@ class Game {
     const v = this.getView(persp);
     v.players.forEach((p) => {
       if (this.phase !== 'ended') p.hand = null; // 对局中隐藏，结束后展示所有手牌
-      p.melds.forEach((m) => { if (m.concealed) m.tiles = m.tiles.map(() => 0); }); // 观战也不泄露暗杠
+      p.melds.forEach((m) => { if (m.concealed && this.phase !== 'ended') m.tiles = m.tiles.map(() => 0); }); // 观战：对局中暗杠全暗，结束亮出
     });
     v.myDraw = null;
     v.actions = { type: 'none' };

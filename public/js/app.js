@@ -236,10 +236,9 @@
   }
 
   function meldEl(m) {
-    const wrap = document.createElement('div'); wrap.className = 'meld';
-    m.tiles.forEach((t, idx) => {
-      const back = !!m.concealed; // 暗杠全部盖牌，不显示牌面
-      wrap.appendChild(MJ.tileEl(t, { back }));
+    const wrap = document.createElement('div'); wrap.className = 'meld' + (m.concealed ? ' concealed' : '');
+    m.tiles.forEach((t) => {
+      wrap.appendChild(MJ.tileEl(t, { back: t === 0 })); // 牌面为 0 表示暗扣，渲染为牌背
     });
     return wrap;
   }
