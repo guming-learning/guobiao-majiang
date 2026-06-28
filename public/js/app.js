@@ -422,27 +422,41 @@
 
   // ===== 娱乐场技能 =====
   const SKILLS_META = {
-    swapDiscard: { name: '偷梁换柱',   desc: '用手牌中的一张与弃牌堆中的一张互换', need: 'handDiscard' },
-    draw2:       { name: '福至心灵',   desc: '本回合多摸两张；如未胡则多弃两张', need: 'none' },
-    forceSwap:   { name: '移花接木',   desc: '从指定玩家手牌随机获得一张，再把你的一张牌（可含刚获得的）还给他', need: 'player' },
-    peek:        { name: '洞若观火',   desc: '查看指定玩家的手牌', need: 'player' },
-    flower3:     { name: '锦上添花',   desc: '使自己的花牌数 +3', need: 'none' },
-    lowFan:      { name: '六六大顺',   desc: '本局起，自己的胡牌番数下限降为 6 番', need: 'none' },
+    swapDiscard: { name: '偷梁换柱', desc: '用手牌中的一张与弃牌堆中的一张互换', need: 'handDiscard' },
+    draw2:       { name: '福至心灵', desc: '本回合多摸两张；如未胡则多弃两张', need: 'none' },
+    forceSwap:   { name: '移花接木', desc: '从指定玩家手牌随机获得一张，再把你的一张牌还给他', need: 'player', attack: true },
+    peek:        { name: '洞若观火', desc: '查看指定玩家的手牌', need: 'player' },
+    skipDraw:    { name: '釜底抽薪', desc: '指定一名玩家，使其跳过下一次摸牌', need: 'player', attack: true },
+    raiseFan:    { name: '漫天要价', desc: '指定一名玩家，使其本局起胡番数提高为 10 番', need: 'player', attack: true },
+    reflect:     { name: '金钟罩', desc: '被攻击技能选为唯一目标时使其失效，并在你下次出牌时反弹给发起者', need: 'none', defense: true },
+    flower3:     { name: '锦上添花', desc: '开局自动使自己的花牌数 +3', need: 'none', passive: true },
+    lowFan:      { name: '六六大顺', desc: '本局自己的起胡番数下限降为 4 番', need: 'none', passive: true },
   };
   function renderSkill(view) {
     const badge = $('skill-badge');
     if (!view || !view.funMode || amSpectator || !view.mySkill) { badge.classList.remove('show'); badge.innerHTML = ''; return; }
     const meta = SKILLS_META[view.mySkill] || { name: view.mySkill, desc: '' };
     const a = view.actions || {};
-    const usable = view.phase === 'acting' && view.current === view.you && !view.mySkillUsed && !(a.extraDiscards > 0);
+    const active = !meta.passive && !meta.defense;
+    const usable = active && view.phase === 'acting' && view.current === view.you && !view.mySkillUsed && !(a.extraDiscards > 0);
     badge.classList.add('show');
     badge.innerHTML = '';
-    const t = document.createElement('div'); t.className = 'sk-name'; t.textContent = '🎴 ' + meta.name; badge.appendChild(t);
+    const tag = meta.attack ? ' ⚔' : meta.defense ? ' 🛡' : meta.passive ? ' ✨' : '';
+    const t = document.createElement('div'); t.className = 'sk-name'; t.textContent = '🎴 ' + meta.name + tag; badge.appendChild(t);
     const d = document.createElement('div'); d.className = 'sk-desc'; d.textContent = meta.desc; badge.appendChild(d);
+    if (view.myMinFan != null && view.myMinFan !== view.minFan) {
+      const f = document.createElement('div'); f.className = 'sk-status'; f.textContent = '你的起胡：' + view.myMinFan + ' 番'; badge.appendChild(f);
+    }
     if (a.extraDiscards > 0 && view.current === view.you) {
       const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = `请再多弃 ${a.extraDiscards} 张`; badge.appendChild(s);
+    } else if (meta.passive) {
+      const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = '被动 · 已生效'; badge.appendChild(s);
+    } else if (meta.defense) {
+      const s = document.createElement('div'); s.className = 'sk-status';
+      s.textContent = view.myReflectPending ? '已弹开，下次出牌反弹给对方' : (view.mySkillUsed ? '已触发' : '防御 · 受攻击自动触发');
+      badge.appendChild(s);
     } else if (view.mySkillUsed) {
-      const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = view.mySkill === 'lowFan' ? '已使用 · 起胡6番' : '已使用'; badge.appendChild(s);
+      const s = document.createElement('div'); s.className = 'sk-status'; s.textContent = '已使用'; badge.appendChild(s);
       if (view.peek) { const b = document.createElement('button'); b.className = 'btn btn-small'; b.textContent = '查看结果'; b.addEventListener('click', () => showPeek(lastGame)); badge.appendChild(b); }
     } else if (usable) {
       const b = document.createElement('button'); b.className = 'btn btn-small btn-primary'; b.textContent = '使用技能'; b.addEventListener('click', () => startSkill(view)); badge.appendChild(b);
@@ -584,6 +598,21 @@
       const nm = (lastGame && lastGame.players[e.seat]) ? lastGame.players[e.seat].name : '玩家';
       const sk = (SKILLS_META[e.skill] || {}).name || '技能';
       flash(`${nm} 使用了「${sk}」`);
+    }
+    else if (e.type === 'reflect') {
+      const nm = (lastGame && lastGame.players[e.seat]) ? lastGame.players[e.seat].name : '玩家';
+      const att = (lastGame && lastGame.players[e.attacker]) ? lastGame.players[e.attacker].name : '对方';
+      flash(`${nm} 用「金钟罩」弹开了 ${att} 的技能`);
+    }
+    else if (e.type === 'reflectFire') {
+      const nm = (lastGame && lastGame.players[e.seat]) ? lastGame.players[e.seat].name : '玩家';
+      const tg = (lastGame && lastGame.players[e.target]) ? lastGame.players[e.target].name : '对方';
+      const sk = (SKILLS_META[e.skill] || {}).name || '技能';
+      flash(`${nm} 反弹「${sk}」给 ${tg}`);
+    }
+    else if (e.type === 'skipDraw') {
+      const nm = (lastGame && lastGame.players[e.seat]) ? lastGame.players[e.seat].name : '玩家';
+      flash(`${nm} 被跳过摸牌`);
     }
   });
 

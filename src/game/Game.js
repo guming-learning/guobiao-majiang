@@ -8,16 +8,23 @@ function countIn(arr, id) { let c = 0; for (const x of arr) if (x === id) c++; r
 function removeOne(arr, id) { const i = arr.indexOf(id); if (i >= 0) arr.splice(i, 1); }
 function removeN(arr, id, n) { for (let k = 0; k < n; k++) removeOne(arr, id); }
 
-// 娱乐场技能（每局每位玩家随机获得 1 个，单次，在自己出牌阶段使用）
+// 娱乐场技能（每局每位玩家随机获得 1 个）：
+//  - 主动技能：在自己出牌阶段发动（need 指定参数）；attack=攻击技能（可被防御反弹）
+//  - passive=被动：开局自动生效，无需发动
+//  - defense=防御：被攻击技能选为唯一目标时自动触发
 const SKILLS = {
   swapDiscard: { name: '偷梁换柱', desc: '用手牌中的一张与弃牌堆中的一张互换', need: 'handDiscard' },
   draw2:       { name: '福至心灵', desc: '本回合多摸两张牌；如未胡牌则多弃两张', need: 'none' },
-  forceSwap:   { name: '移花接木', desc: '从指定玩家手牌中随机获得一张牌，再把你的一张牌（可含刚获得的）还给他', need: 'player' },
+  forceSwap:   { name: '移花接木', desc: '从指定玩家手牌中随机获得一张牌，再把你的一张牌还给他', need: 'player', attack: true },
   peek:        { name: '洞若观火', desc: '查看指定玩家的手牌', need: 'player' },
-  flower3:     { name: '锦上添花', desc: '使自己的花牌数 +3', need: 'none' },
-  lowFan:      { name: '六六大顺', desc: '本局起，自己的胡牌番数下限降为 6 番', need: 'none' },
+  skipDraw:    { name: '釜底抽薪', desc: '指定一名玩家，使其跳过下一次摸牌', need: 'player', attack: true },
+  raiseFan:    { name: '漫天要价', desc: '指定一名玩家，使其本局起胡番数下限提高为 10 番', need: 'player', attack: true },
+  reflect:     { name: '金钟罩', desc: '被攻击技能选为唯一目标时使其失效，并在你下次出牌阶段对发起者反弹该技能', need: 'none', defense: true },
+  flower3:     { name: '锦上添花', desc: '开局自动使自己的花牌数 +3（被动）', need: 'none', passive: true },
+  lowFan:      { name: '六六大顺', desc: '本局自己的起胡番数下限降为 4 番（开局自动生效）', need: 'none', passive: true },
 };
 const SKILL_IDS = Object.keys(SKILLS);
+function isAttackSkill(skill) { return !!(SKILLS[skill] && SKILLS[skill].attack); }
 
 class Game {
   constructor({ names, scores, dealer, quanfeng, onEvent, minFan, funMode }) {
@@ -48,7 +55,10 @@ class Game {
     this.skillUsed = [false, false, false, false]; // 是否已用
     this.peeked = [null, null, null, null];        // 看牌结果：{target, hand}
     this._extraDiscards = 0;                        // draw2 技能待多弃的张数
-    this.minFanLow = [false, false, false, false];  // lowFan 技能：该玩家起胡降为6番
+    this.minFanLow = [false, false, false, false];  // lowFan 技能：该玩家起胡降为 4 番
+    this.minFanHigh = [false, false, false, false]; // raiseFan 技能：该玩家起胡提高为 10 番
+    this.skipNextDraw = [false, false, false, false]; // skipDraw 技能：该玩家下次摸牌被跳过
+    this.pendingReflect = [null, null, null, null]; // reflect 技能：待反弹 {skill, attacker}
     this._pendingReturn = null;                     // forceSwap 技能：待还牌 {seat,target,gained}
   }
 
@@ -65,6 +75,7 @@ class Game {
     for (const p of this.players) p.hand.sort((a, b) => a - b);
     if (this.funMode) {
       for (let s = 0; s < 4; s++) this.skills[s] = SKILL_IDS[Math.floor(Math.random() * SKILL_IDS.length)];
+      for (let s = 0; s < 4; s++) this._applyPassiveSkill(s); // 被动技能开局自动生效
     }
     this._logMsg(`开局，庄家：${this._name(this.dealer)}（${R.WIND_NAME[this.quanfeng]}圈）`);
     this._emit({ type: 'start', dealer: this.dealer });
@@ -116,6 +127,13 @@ class Game {
   }
 
   _drawAndAct(seat) {
+    if (this.skipNextDraw[seat]) { // skipDraw 技能：跳过本次摸牌，直接轮到下一家
+      this.skipNextDraw[seat] = false;
+      this._logMsg(`${this._name(seat)} 被迫跳过摸牌`);
+      this._emit({ type: 'skipDraw', seat });
+      if (this.wall.length === 0) return this._drawGame();
+      return this._drawAndAct((seat + 1) % 4);
+    }
     const res = this._draw(seat, false);
     if (res.drained) return this._drawGame();
     this.current = seat;
@@ -125,6 +143,7 @@ class Game {
     this.lastDraw = { seat, tile: res.tile };
     this.phase = 'acting';
     this._emit({ type: 'draw', seat });
+    this._applyPendingReflect(seat); // 反弹技能在自己出牌阶段对发起者生效
   }
   _drawAfterGang(seat) {
     const res = this._draw(seat, true);
@@ -154,7 +173,7 @@ class Game {
     else concealed = p.hand.slice();
     const visible = this._countVisible(winTile);
     const juezhang = isZimo ? (visible === 3) : (visible === 4);
-    const minFan = this.minFanLow[seat] ? Math.min(6, this.minFan) : this.minFan;
+    const minFan = this._effectiveMinFan(seat);
     return R.evaluateWin({
       melds: p.melds, concealed, winTile, isZimo,
       quanfeng: this.quanfeng, menfeng: p.menfeng,
@@ -253,13 +272,88 @@ class Game {
       case 'draw2': r = this._skillDraw2(seat, action); break;
       case 'forceSwap': r = this._skillForceSwap(seat, action); break;
       case 'peek': r = this._skillPeek(seat, action); break;
-      case 'flower3': r = this._skillFlower3(seat, action); break;
-      case 'lowFan': r = this._skillLowFan(seat, action); break;
-      default: return { error: '未知技能' };
+      case 'skipDraw': r = this._skillSkipDraw(seat, action); break;
+      case 'raiseFan': r = this._skillRaiseFan(seat, action); break;
+      default: return { error: '该技能无需主动发动' };
     }
     if (r && r.error) return r;
     this.skillUsed[seat] = true;
     this._emit({ type: 'skill', seat, skill });
+    return { ok: true };
+  }
+
+  // 被动技能开局自动生效
+  _applyPassiveSkill(seat) {
+    const skill = this.skills[seat];
+    if (skill === 'flower3') { this._applyFlower3(seat); this.skillUsed[seat] = true; }
+    else if (skill === 'lowFan') { this.minFanLow[seat] = true; this.skillUsed[seat] = true; }
+  }
+
+  // 该座位本局的有效起胡番数（先 lowFan 降为4，再 raiseFan 提高为10——攻击优先）
+  _effectiveMinFan(seat) {
+    let m = this.minFan;
+    if (this.minFanLow[seat]) m = Math.min(4, m);
+    if (this.minFanHigh[seat]) m = Math.max(10, m);
+    return m;
+  }
+
+  // 攻击技能命中前先判防御：若目标持未用的 reflect，则技能失效并登记反弹，返回 true
+  _maybeReflect(attacker, target, skill) {
+    if (this.skills[target] === 'reflect' && !this.skillUsed[target]) {
+      this.skillUsed[target] = true;
+      this.pendingReflect[target] = { skill, attacker };
+      this._logMsg(`${this._name(target)} 用「金钟罩」弹开了 ${this._name(attacker)} 的「${SKILLS[skill].name}」`);
+      this._emit({ type: 'reflect', seat: target, attacker, skill });
+      return true;
+    }
+    return false;
+  }
+
+  // 轮到 seat 出牌时，若有待反弹技能，则对发起者施放（反弹不会再次被反弹）
+  _applyPendingReflect(seat) {
+    const pr = this.pendingReflect[seat];
+    if (!pr) return;
+    this.pendingReflect[seat] = null;
+    this._logMsg(`${this._name(seat)} 将「${SKILLS[pr.skill].name}」反弹给 ${this._name(pr.attacker)}`);
+    this._emit({ type: 'reflectFire', seat, target: pr.attacker, skill: pr.skill });
+    this._applyReflectedSkill(seat, pr.attacker, pr.skill);
+  }
+
+  _applyReflectedSkill(user, target, skill) {
+    if (skill === 'skipDraw') { this.skipNextDraw[target] = true; }
+    else if (skill === 'raiseFan') { this.minFanHigh[target] = true; }
+    else if (skill === 'forceSwap') { this._forceSwapAtomic(user, target); } // 反弹的移花接木为自动一换一，不进入两段式
+  }
+
+  // 自动一换一：user 从 target 随机取一张，再随机还一张给 target（用于反弹，无需交互）
+  _forceSwapAtomic(user, target) {
+    const U = this.players[user], Q = this.players[target];
+    if (!Q.hand.length) return;
+    const gi = Math.floor(Math.random() * Q.hand.length);
+    const g = Q.hand.splice(gi, 1)[0];
+    U.hand.push(g);
+    const ri = Math.floor(Math.random() * U.hand.length);
+    const back = U.hand.splice(ri, 1)[0];
+    Q.hand.push(back);
+    U.hand.sort((a, b) => a - b); Q.hand.sort((a, b) => a - b);
+    this._logMsg(`${this._name(user)} 与 ${this._name(target)} 互换了一张牌`);
+  }
+
+  _skillSkipDraw(seat, action) {
+    const t = action.target;
+    if (t == null || t < 0 || t > 3 || t === seat) return { error: '目标无效' };
+    if (this._maybeReflect(seat, t, 'skipDraw')) return { ok: true };
+    this.skipNextDraw[t] = true;
+    this._logMsg(`${this._name(seat)} 使 ${this._name(t)} 跳过下次摸牌`);
+    return { ok: true };
+  }
+
+  _skillRaiseFan(seat, action) {
+    const t = action.target;
+    if (t == null || t < 0 || t > 3 || t === seat) return { error: '目标无效' };
+    if (this._maybeReflect(seat, t, 'raiseFan')) return { ok: true };
+    this.minFanHigh[t] = true;
+    this._logMsg(`${this._name(t)} 的起胡番数被提高为 10 番`);
     return { ok: true };
   }
 
@@ -292,6 +386,7 @@ class Game {
   _skillForceSwap(seat, action) {
     const t = action.target;
     if (t == null || t < 0 || t > 3 || t === seat) return { error: '目标无效' };
+    if (this._maybeReflect(seat, t, 'forceSwap')) return { ok: true };
     const Q = this.players[t];
     if (!Q.hand.length) return { error: '目标无手牌' };
     const idx = Math.floor(Math.random() * Q.hand.length);
@@ -315,12 +410,6 @@ class Game {
     return { ok: true };
   }
 
-  _skillLowFan(seat) {
-    this.minFanLow[seat] = true;
-    this._logMsg(`${this._name(seat)} 的起胡番数降为 6 番`);
-    return { ok: true };
-  }
-
   _skillPeek(seat, action) {
     const t = action.target;
     if (t == null || t < 0 || t > 3 || t === seat) return { error: '目标无效' };
@@ -329,12 +418,11 @@ class Game {
     return { ok: true };
   }
 
-  _skillFlower3(seat) {
+  _applyFlower3(seat) {
     const p = this.players[seat];
     const pool = [T.TILE_MEI, T.TILE_LAN, T.TILE_ZHU, T.TILE_JU, T.TILE_CHU, T.TILE_XIA, T.TILE_QIU, T.TILE_DONG];
     for (let k = 0; k < 3; k++) p.flowers.push(pool[(p.flowers.length + k) % pool.length]);
     this._logMsg(`${this._name(seat)} 花牌+3`);
-    return { ok: true };
   }
 
   _offerClaimsForDiscard(from, tile) {
@@ -564,7 +652,8 @@ class Game {
       funMode: this.funMode,
       mySkill: this.funMode ? this.skills[seat] : null,
       mySkillUsed: this.skillUsed[seat],
-      myMinFan: this.minFanLow[seat] ? Math.min(6, this.minFan) : this.minFan,
+      myMinFan: this._effectiveMinFan(seat),
+      myReflectPending: this.pendingReflect[seat] ? { skill: this.pendingReflect[seat].skill, target: this.pendingReflect[seat].attacker } : null,
       mustReturn: (this._pendingReturn && this._pendingReturn.seat === seat) ? { gained: this._pendingReturn.gained, target: this._pendingReturn.target } : null,
       peek: this.peeked[seat] || null,   // {target, hand} 看牌结果（仅自己）
       wallCount: this.wall.length,
