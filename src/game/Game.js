@@ -248,7 +248,7 @@ class Game {
         if (!this.drewThisTurn) return { error: '此时不能自摸' };
         const winTile = this.lastDraw.tile;
         const res = this._evalHu(seat, winTile, { isZimo: true, isGang: this.gangFlag });
-        if (!res.ok) return { error: `不足 ${this.minFan} 番（${res.thresholdFan}番）不能和` };
+        if (!res.ok) return { error: `当前 ${res.thresholdFan} 番，需 ${this._effectiveMinFan(seat)} 番才能和` };
         const delta = R.settle([{ seat, score: res.score }], 'zimo', null);
         this._endHand({ type: 'zimo', winners: [{ seat, winTile, ...res }], delta, from: null });
         return { ok: true };
@@ -608,12 +608,14 @@ class Game {
       for (const t of p.hand) { if (!seen.has(t) && countIn(p.hand, t) === 4) { angang.push(t); seen.add(t); } }
       const jiagang = [];
       for (const m of p.melds) if (m.type === 'peng' && countIn(p.hand, m.tile) >= 1) jiagang.push(m.tile);
-      let zimo = false;
+      let zimo = false, zimoBlocked = null;
       if (this.drewThisTurn) {
         const res = this._evalHu(seat, this.lastDraw.tile, { isZimo: true, isGang: this.gangFlag });
         zimo = res.ok;
+        // 牌型已和但番数不足：提示当前番数与起胡下限
+        if (!res.ok && res.isWin) zimoBlocked = { fan: res.thresholdFan, need: this._effectiveMinFan(seat) };
       }
-      return { type: 'acting', discard: true, angang, jiagang, zimo, drawnTile: this.lastDraw ? this.lastDraw.tile : null };
+      return { type: 'acting', discard: true, angang, jiagang, zimo, zimoBlocked, drawnTile: this.lastDraw ? this.lastDraw.tile : null };
     }
     if (this.phase === 'claiming' && this.claim.options[String(seat)]) {
       const o = this.claim.options[String(seat)];

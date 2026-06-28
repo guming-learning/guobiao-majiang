@@ -74,12 +74,13 @@ function buildHandtiles({ melds, concealed, winTile, isZimo, quanfeng, menfeng, 
 function evaluateWin(opts) {
   const minFan = opts.minFan || 8;
   const ht = buildHandtiles(opts);
-  if (!ht) return { ok: false, thresholdFan: 0, score: 0, total: 0, items: [], huapai: 0 };
+  if (!ht) return { ok: false, isWin: false, thresholdFan: 0, score: 0, total: 0, items: [], huapai: 0 };
   const fan = new Fan();
   fan.CountFan(ht);
   const r = fan.getResult();
   return {
     ok: r.thresholdFan >= minFan,
+    isWin: (r.total - r.huapaiCount) > 0, // 牌型成立：除花牌外存在合法和牌分解（非和牌型为0）
     thresholdFan: r.thresholdFan,
     score: r.thresholdFan + r.huapaiCount, // 用于计分的番数（含花牌）
     total: r.total,

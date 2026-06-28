@@ -162,6 +162,7 @@ html, body {
 .act-chi { background: linear-gradient(180deg, #7ed957, #3aa53a); color: #fff; }
 .act-pass { background: #4a564e; color: #fff; }
 .action-bar .hint-text { color: #cfe6cf; font-size: 14px; }
+.action-bar .act-blocked { background: rgba(60,20,20,0.92); color: #ffc9c9; border: 1px solid rgba(255,150,150,0.5); border-radius: 18px; padding: 8px 14px; font-size: 13px; font-weight: 700; pointer-events: auto; box-shadow: 0 3px 12px rgba(0,0,0,0.55); max-width: 92vw; text-align: center; }
 @keyframes pulse { 0%,100%{ transform: scale(1);} 50%{ transform: scale(1.07);} }
 
 /* ===== 浮层 ===== */

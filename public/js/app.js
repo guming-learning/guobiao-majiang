@@ -402,8 +402,14 @@
       (a.jiagang || []).forEach((t) => addBtn(bar, '加杠' + MJ.tileText(t), 'act-gang', () => sendAction({ type: 'jiagang', tile: t })));
       if (bar.childElementCount) {
         addBtn(bar, '取消', 'act-pass', () => bar.classList.remove('show')); // 不杠/不自摸，直接点手牌出牌
-        bar.classList.add('show');
       }
+      if (a.zimoBlocked) {
+        // 已是和牌型但番数不足：提示当前番数与起胡下限（信息条，非按钮）
+        const h = document.createElement('div'); h.className = 'act-blocked';
+        h.textContent = `🀄 已是和牌型，但当前 ${a.zimoBlocked.fan} 番 < 起胡 ${a.zimoBlocked.need} 番，无法胡牌`;
+        bar.appendChild(h);
+      }
+      if (bar.childElementCount) bar.classList.add('show');
     } else if (a.type === 'claiming') {
       hint.textContent = '请选择';
       if (a.hu) addBtn(bar, a.kind === 'jiagang' ? '抢杠和' : '和', 'act-hu', () => sendAction({ type: 'hu' }));
