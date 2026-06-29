@@ -20,6 +20,8 @@
   })();
   let lastPeekSig = null;   // 上次自动展示的看牌结果签名
   let skillCtx = null;      // 技能使用流程上下文
+  let lastSeatSig = {};     // 各座位上次渲染签名（增量重绘，避免整屏闪烁）
+  let lastRenderedYou = null;
 
   const $ = (id) => document.getElementById(id);
   const screens = { login: $('login-screen'), lobby: $('lobby-screen'), table: $('table-screen') };
@@ -134,8 +136,8 @@
       prevPhase = view.phase;
     }
   });
-  socket.on('leftRoom', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; showScreen('lobby'); socket.emit('listRooms'); });
-  socket.on('roomClosed', (d) => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; showScreen('lobby'); socket.emit('listRooms'); toast(d && d.reason ? d.reason : '房间已关闭'); });
+  socket.on('leftRoom', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; lastSeatSig = {}; lastRenderedYou = null; showScreen('lobby'); socket.emit('listRooms'); });
+  socket.on('roomClosed', (d) => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; lastSeatSig = {}; lastRenderedYou = null; showScreen('lobby'); socket.emit('listRooms'); toast(d && d.reason ? d.reason : '房间已关闭'); });
 
   function mySeat() {
     if (lastGame) return lastGame.you;
@@ -225,12 +227,44 @@
 
   // ===== 牌桌渲染 =====
   const POS = ['bottom', 'right', 'top', 'left'];
+  // 仅重建“内容有变化”的座位，避免每次有人打牌就整屏重绘（手机端会闪一下）
+  function seatSig(p, view, pos) {
+    const base = [pos, p.isDealer ? 'D' : '', p.menfengName, p.name, p.score, p.handCount,
+      p.hand ? p.hand.join('.') : 'x',
+      (p.melds || []).map((m) => m.type + (m.tiles || []).join('') + (m.concealed ? 'c' : '')).join(';'),
+      (p.flowers || []).join('.'), (p.river || []).join('.')];
+    if (pos === 'bottom') {
+      const a = view.actions || {};
+      base.push('act' + (a.type || '') + (a.discard ? 'd' : '') + (a.mustReturn ? 'r' : '') + (a.extraDiscards || 0));
+      base.push('dr' + (view.myDraw == null ? '' : view.myDraw));
+      base.push('mr' + (view.mustReturn ? view.mustReturn.gained : ''));
+    }
+    return base.join('|');
+  }
+  // 最近弃牌高亮：用 class 切换，不重建座位（别人打牌时本家手牌不再重绘）
+  function updateLastDiscardHighlight(view) {
+    document.querySelectorAll('.river .tile.last').forEach((el) => el.classList.remove('last'));
+    const ld = view.lastDiscard;
+    if (!ld) return;
+    const river = document.querySelector('.seat-' + POS[(ld.seat - view.you + 4) % 4] + ' .river');
+    if (!river) return;
+    const tiles = river.querySelectorAll('.tile');
+    const last = tiles[tiles.length - 1];
+    if (last && Number(last.dataset.tile) === ld.tile) last.classList.add('last'); // 被吃碰的弃牌已移出牌河，不高亮
+  }
   function renderBoard(view) {
-    document.querySelectorAll('.seat-area').forEach((a) => (a.innerHTML = ''));
+    if (view.you !== lastRenderedYou) { lastSeatSig = {}; lastRenderedYou = view.you; }
     view.players.forEach((p) => {
-      const rel = (p.seat - view.you + 4) % 4;
-      renderSeat(POS[rel], p, view);
+      const pos = POS[(p.seat - view.you + 4) % 4];
+      const sig = seatSig(p, view, pos);
+      if (lastSeatSig[pos] !== sig) { lastSeatSig[pos] = sig; renderSeat(pos, p, view); }
     });
+    // 当前玩家高亮单独切换（不重建座位），轮转时不闪
+    view.players.forEach((p) => {
+      const pinfo = document.querySelector('.seat-' + POS[(p.seat - view.you + 4) % 4] + ' .pinfo');
+      if (pinfo) pinfo.classList.toggle('current', !!p.isCurrent);
+    });
+    updateLastDiscardHighlight(view);
     renderCenter();
     renderActions(view);
   }
@@ -252,12 +286,9 @@
     flowers.forEach((t) => c.appendChild(MJ.tileEl(t)));
     return c;
   }
-  function riverEl(p, view) {
+  function riverEl(p) {
     const c = document.createElement('div'); c.className = 'river h';
-    p.river.forEach((t) => {
-      const isLast = view.lastDiscard && view.lastDiscard.seat === p.seat && t === view.lastDiscard.tile;
-      c.appendChild(MJ.tileEl(t, { cls: isLast ? 'last' : null }));
-    });
+    p.river.forEach((t) => c.appendChild(MJ.tileEl(t))); // 最近弃牌高亮由 updateLastDiscardHighlight 单独处理
     return c;
   }
   function backsEl(n) {
@@ -361,6 +392,7 @@
   function renderSeat(pos, p, view) {
     const area = document.querySelector('.seat-area.seat-' + pos);
     if (!area) return;
+    area.innerHTML = ''; // 仅清空本座位（renderBoard 已按签名判断需要重建）
     const frag = document.createDocumentFragment();
     if (pos === 'bottom') {
       frag.appendChild(riverEl(p, view));               // 我的牌河（靠中央）

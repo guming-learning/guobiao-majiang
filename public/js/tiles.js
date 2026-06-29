@@ -17,6 +17,7 @@
   function tileEl(id, opts = {}) {
     const el = document.createElement('div');
     el.className = 'tile';
+    el.dataset.tile = id;
     if (opts.back) { el.classList.add('back'); return el; }
     const info = tileInfo(id);
     el.classList.add(info.cls);
