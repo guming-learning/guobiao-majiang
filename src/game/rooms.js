@@ -38,7 +38,10 @@ class Room {
     this._advEmitSig = [null, null, null, null]; // 已推送的展示签名（过滤后），变化才推
     this._advHandSig = [null, null, null, null]; // 上次枚举对应的手牌签名（手牌变才重算枚举）
     this._advCand = [[], [], [], []];            // 缓存的备选番型（枚举结果，未按余张过滤）
+    this.lastActivity = Date.now();              // 最近一次真人操作时间（用于闲置自动解散）
   }
+
+  touch() { this.lastActivity = Date.now(); }
 
   isSpectator(playerId) { return this.spectators.includes(playerId); }
   addSpectator(playerId) { if (!this.isSpectator(playerId)) this.spectators.push(playerId); }
@@ -262,6 +265,7 @@ class Room {
     if (!this.game) return { error: '游戏未开始' };
     const seat = this.seatOf(playerId);
     if (seat < 0) return { error: '不在房间' };
+    this.touch(); // 真人操作，刷新活跃时间
     if (this.game.phase === 'ended') {
       if (action.type === 'next') { this.setReady(playerId, true); this.maybeNext(); return { ok: true }; }
       return { error: '本局已结束' };
@@ -430,6 +434,41 @@ class RoomManager {
     this.rooms = new Map();           // roomId -> Room
     this.players = new Map();         // playerId -> {playerId, name, socketId, roomId}
     this.socketToPlayer = new Map();  // socketId -> playerId
+    // 闲置自动解散：每小时巡检，超过 1 天无真人操作的房间自动解散
+    this.idleTimer = setInterval(() => this.sweepIdleRooms(), 60 * 60 * 1000);
+    if (this.idleTimer.unref) this.idleTimer.unref();
+  }
+
+  static get IDLE_TTL() { return 24 * 60 * 60 * 1000; } // 1 天
+
+  sweepIdleRooms() {
+    const now = Date.now();
+    for (const room of [...this.rooms.values()]) {
+      if (now - (room.lastActivity || 0) > RoomManager.IDLE_TTL) {
+        this.disbandRoom(room, '房间超过 1 天无人操作，已自动解散');
+      }
+    }
+  }
+
+  // 解散房间：通知并踢出所有真人与观战者，清理机器人，删除房间
+  disbandRoom(room, reason) {
+    for (let s = 0; s < 4; s++) {
+      const pid = room.seats[s];
+      if (!pid) continue;
+      const pl = this.players.get(pid);
+      if (pl && !pl.isBot) {
+        pl.roomId = null;
+        const sid = this.socketIdOf(pid);
+        if (sid) {
+          this.io.to(sid).emit('roomClosed', reason ? { reason } : {});
+          const sk = this.io.sockets.sockets.get(sid);
+          if (sk) sk.leave('room:' + room.id);
+        }
+      }
+    }
+    room.destroy(); // 处理观战者与机器人，并清空座位
+    this.rooms.delete(room.id);
+    this.broadcastLobby();
   }
 
   socketIdOf(playerId) { const p = this.players.get(playerId); return p ? p.socketId : null; }
@@ -487,6 +526,7 @@ class RoomManager {
   }
   _join(socket, room) {
     const playerId = this.socketToPlayer.get(socket.id);
+    room.touch();
     const seat = room.addPlayer(playerId);
     if (seat < 0) { socket.emit('errorMsg', '房间已满'); return; }
     this.players.get(playerId).roomId = room.id;
@@ -544,6 +584,7 @@ class RoomManager {
     if (!p || !p.roomId) return;
     const room = this.rooms.get(p.roomId);
     if (!room) return;
+    room.touch();
     if (room.game && room.game.phase === 'ended') { room.setReady(playerId, val); room.maybeNext(); return; }
     room.setReady(playerId, val);
     room.broadcastRoom();
@@ -564,6 +605,7 @@ class RoomManager {
     if (!p || !p.roomId) return;
     const room = this.rooms.get(p.roomId);
     if (!room) return;
+    room.touch();
     if (room.addBot() < 0) socket.emit('errorMsg', '无法添加机器人');
   }
   removeBot(socket, seat) {
@@ -571,7 +613,7 @@ class RoomManager {
     const p = this.players.get(playerId);
     if (!p || !p.roomId) return;
     const room = this.rooms.get(p.roomId);
-    if (room) room.removeBotSeat(seat);
+    if (room) { room.touch(); room.removeBotSeat(seat); }
   }
   closeRoom(socket) {
     const playerId = this.socketToPlayer.get(socket.id);
@@ -580,24 +622,7 @@ class RoomManager {
     const room = this.rooms.get(p.roomId);
     if (!room) return;
     if (room.owner !== playerId) { socket.emit('errorMsg', '只有房主可以关闭房间'); return; }
-    // 通知并踢出所有真人，解散房间（含机器人）
-    for (let s = 0; s < 4; s++) {
-      const pid = room.seats[s];
-      if (!pid) continue;
-      const pl = this.players.get(pid);
-      if (pl && !pl.isBot) {
-        pl.roomId = null;
-        const sid = this.socketIdOf(pid);
-        if (sid) {
-          this.io.to(sid).emit('roomClosed', {});
-          const sk = this.io.sockets.sockets.get(sid);
-          if (sk) sk.leave('room:' + room.id);
-        }
-      }
-    }
-    room.destroy();
-    this.rooms.delete(room.id);
-    this.broadcastLobby();
+    this.disbandRoom(room); // 通知所有真人、清理机器人/观战、删除房间
   }
   disconnect(socket) {
     const playerId = this.socketToPlayer.get(socket.id);

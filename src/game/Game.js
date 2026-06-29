@@ -407,7 +407,26 @@ class Game {
     this.players[pr.target].hand.push(B); this.players[pr.target].hand.sort((a, b) => a - b);
     this._pendingReturn = null;
     this._logMsg(`${this._name(seat)} 还给 ${this._name(pr.target)} 一张`);
+    this._maybeAutoZimo(seat, pr.gained); // 还牌后触发一次胡牌结算（按自摸）
     return { ok: true };
+  }
+
+  // 若此刻 seat 手牌已和且够番，自动按自摸和牌结算；优先以刚获得的牌(preferTile)为和牌张
+  _maybeAutoZimo(seat, preferTile) {
+    if (this.phase !== 'acting' || seat !== this.current) return;
+    const P = this.players[seat];
+    const cand = [];
+    if (preferTile != null && countIn(P.hand, preferTile) > 0) cand.push(preferTile);
+    if (this.lastDraw && countIn(P.hand, this.lastDraw.tile) > 0 && !cand.includes(this.lastDraw.tile)) cand.push(this.lastDraw.tile);
+    for (const t of new Set(P.hand)) if (!cand.includes(t)) cand.push(t);
+    let win = null;
+    for (const t of cand) {
+      const res = this._evalHu(seat, t, { isZimo: true, isGang: this.gangFlag });
+      if (res.ok) { win = { winTile: t, res }; break; }
+    }
+    if (!win) return;
+    const delta = R.settle([{ seat, score: win.res.score }], 'zimo', null);
+    this._endHand({ type: 'zimo', winners: [{ seat, winTile: win.winTile, ...win.res }], delta, from: null });
   }
 
   _skillPeek(seat, action) {

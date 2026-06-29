@@ -135,7 +135,7 @@
     }
   });
   socket.on('leftRoom', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; showScreen('lobby'); socket.emit('listRooms'); });
-  socket.on('roomClosed', () => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; showScreen('lobby'); socket.emit('listRooms'); toast('房间已关闭'); });
+  socket.on('roomClosed', (d) => { inRoom = false; amSpectator = false; lastGame = null; lastRoom = null; lastAdvice = null; showScreen('lobby'); socket.emit('listRooms'); toast(d && d.reason ? d.reason : '房间已关闭'); });
 
   function mySeat() {
     if (lastGame) return lastGame.you;
