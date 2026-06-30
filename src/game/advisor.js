@@ -70,6 +70,98 @@ function shisanyaoCandidate(need, numMelds) {
   return { w, cost, needed };
 }
 
+// ===== 组合龙系（七星不靠/全不靠/组合龙）候选（均要求门清无副露）=====
+const SUIT_BASE = [0, 9, 18];                 // 万0 条9 饼18（数牌 id = base + 点数）
+const KNIT_GROUP = [[1, 4, 7], [2, 5, 8], [3, 6, 9]];
+const HONORS = [28, 29, 30, 31, 32, 33, 34];  // 东南西北中发白
+const SUIT_PERMS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+// 6 种花色分配下、各 9 张组合龙数牌（每花色取一组 1/4/7、2/5/8、3/6/9）
+function knittedTileSets() {
+  return SUIT_PERMS.map((perm) => {
+    const t = [];
+    for (let s = 0; s < 3; s++) for (const r of KNIT_GROUP[perm[s]]) t.push(SUIT_BASE[s] + r);
+    return t;
+  });
+}
+function candCost(w, need) { let c = 0; for (let t = 1; t <= 34; t++) { const d = w[t] - need[t]; if (d > 0) c += d; } return c; }
+
+// 全不靠：从「9 张组合龙数牌 + 7 张字牌」16 张池中取 14 张单牌，尽量保留手中已有
+function quanbukaoCandidates(need, numMelds) {
+  if (numMelds > 0) return [];
+  const out = [];
+  for (const knit of knittedTileSets()) out.push(...isolatedCandidates(need, [], knit.concat(HONORS), 14));
+  return out;
+}
+// 七星不靠：7 张字牌齐 + 从 9 张组合龙数牌中取 7 张
+function qixingbukaoCandidates(need, numMelds) {
+  if (numMelds > 0) return [];
+  const out = [];
+  for (const knit of knittedTileSets()) out.push(...isolatedCandidates(need, HONORS, knit, 7));
+  return out;
+}
+// 生成「required 全含 + 从 choosable 选 pickCount 张、全单牌」的候选；
+// 为每个缺张各生成一个变体（使其成为进张），从而展示全部有效进张（多听）。
+function isolatedCandidates(need, required, choosable, pickCount) {
+  const cHave = choosable.filter((t) => need[t] > 0);
+  const baseCh = cHave.slice(0, pickCount);
+  const cMiss = choosable.filter((t) => need[t] === 0);
+  const fillNeeded = pickCount - baseCh.length;
+  const combos = [];
+  if (fillNeeded <= 0) combos.push([]);
+  else for (const m of cMiss) {
+    const combo = [m];
+    for (const x of cMiss) { if (combo.length >= fillNeeded) break; if (x !== m) combo.push(x); }
+    if (combo.length === fillNeeded) combos.push(combo);
+  }
+  const out = [], seen = new Set();
+  for (const combo of combos) {
+    const chosen = required.concat(baseCh, combo);
+    if (chosen.length < required.length + pickCount) continue;
+    const key = chosen.slice().sort((a, b) => a - b).join(',');
+    if (seen.has(key)) continue; seen.add(key);
+    const w = new Array(35).fill(0); for (const t of chosen) w[t] = 1;
+    out.push({ w, cost: candCost(w, need) });
+  }
+  return out;
+}
+// 组合龙：9 张组合龙数牌 + 1 面子 + 1 对子（门清；面子/对子不与组合龙数牌重叠）
+function zuhelongCandidates(need, numMelds) {
+  if (numMelds > 0) return [];
+  const out = [];
+  for (const knit of knittedTileSets()) {
+    const excl = new Set(knit);
+    const rem = need.slice();
+    for (const t of knit) if (rem[t] > 0) rem[t]--;
+    const sp = bestSetPair(rem, excl);
+    if (!sp) continue;
+    const w = new Array(35).fill(0);
+    for (const t of knit) w[t] = 1;
+    for (let t = 1; t <= 34; t++) w[t] += sp[t];
+    out.push({ w, cost: candCost(w, need) });
+  }
+  return out;
+}
+// 在 rem 张数里找「1 面子 + 1 对子」使补张最少（排除 excl 中的牌）；返回 w 增量或 null
+function bestSetPair(rem, excl) {
+  const sets = [];
+  for (let t = 1; t <= 34; t++) if (!excl.has(t)) sets.push([t, t, t]);
+  for (let s = 0; s < 3; s++) for (let r = 1; r <= 7; r++) {
+    const a = SUIT_BASE[s] + r;
+    if (!excl.has(a) && !excl.has(a + 1) && !excl.has(a + 2)) sets.push([a, a + 1, a + 2]);
+  }
+  let best = null, bestCost = Infinity;
+  for (let pp = 1; pp <= 34; pp++) {
+    if (excl.has(pp)) continue;
+    for (const set of sets) {
+      const w = new Array(35).fill(0);
+      w[pp] += 2; for (const t of set) w[t] += 1;
+      const cost = candCost(w, rem);
+      if (cost < bestCost) { bestCost = cost; best = w; }
+    }
+  }
+  return best;
+}
+
 // 计算某个目标牌型相对当前手牌的进张（缺的牌）
 function neededTiles(w, need) {
   const out = [];
@@ -117,7 +209,8 @@ function analyzeHand({ hand, melds, quanfeng, menfeng }, topN = 3) {
   // 组织度高的手牌（一色/对子）在低距离即命中、提前停止，开销小；
   // 散牌则会向更远搜索，从而给出多个备选番型。
   const seen = new Map(); // 签名 -> cost
-  const special = [qiduiCandidate(need, numMelds), shisanyaoCandidate(need, numMelds)].filter(Boolean);
+  const special = [qiduiCandidate(need, numMelds), shisanyaoCandidate(need, numMelds)].filter(Boolean)
+    .concat(quanbukaoCandidates(need, numMelds), qixingbukaoCandidates(need, numMelds), zuhelongCandidates(need, numMelds));
   let evalCount = 0;
   for (let budget = 1; budget <= MAX_BUDGET && best.size < CAND_N && evalCount < EVAL_TOTAL; budget++) {
     const layer = [];
